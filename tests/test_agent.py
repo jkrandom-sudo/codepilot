@@ -56,7 +56,7 @@ class TestPrompts:
     def test_system_prompt_contains_project_analysis(self):
         prompt = build_system_prompt(agent_name="build")
         assert "Project analysis" in prompt
-        assert "SYNTHESIZE" in prompt
+        assert "Deep context mode" in prompt
 
     def test_system_prompt_cross_checks_stale_reports(self):
         prompt = build_system_prompt(agent_name="build")
@@ -129,6 +129,33 @@ class TestPrompts:
         assert "test/evaluation task" in prompt
         assert "real tool result" in prompt
         assert "do not produce" in prompt
+
+    def test_runtime_prompt_enables_deep_context_for_complex_tasks(self):
+        from codepilot.agent.nodes import TASK_ITERATION_LIMITS, build_system_prompt_with_context
+        from codepilot.agent.registry import AgentRegistry
+
+        state: AgentState = {
+            "messages": [],
+            "working_dir": "/tmp",
+            "files_context": [],
+            "task_type": "project_analysis",
+            "agent_name": "plan-execute",
+            "session_id": "test",
+        }
+        agent_def = AgentRegistry().get_or_default("plan-execute")
+        prompt = build_system_prompt_with_context(
+            "Base prompt",
+            state,
+            agent_def=agent_def,
+            iteration_count=0,
+            total_tool_invocations=0,
+            iteration_limit=TASK_ITERATION_LIMITS["project_analysis"],
+            file_summaries={},
+        )
+
+        assert "Deep context mode" in prompt
+        assert "read multiple relevant source files" in prompt
+        assert "Token target" in prompt
 
 
 class TestReferenceParser:

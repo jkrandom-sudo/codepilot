@@ -29,7 +29,15 @@ from codepilot.tools import ALL_TOOLS
 from codepilot.tools.shell_tool import _is_search_command
 
 _registry = AgentRegistry()
-READ_FILE_CALL_LIMIT = 20
+READ_FILE_CALL_LIMIT = 80
+DEFAULT_SEARCH_CALL_LIMIT = 8
+DEEP_SEARCH_CALL_LIMIT = 28
+DEFAULT_SHELL_CALL_LIMIT = 10
+DEEP_SHELL_CALL_LIMIT = 36
+
+
+def _is_deep_context_task(task_type: str, agent_name: str) -> bool:
+    return task_type in {"project_analysis", "file_edit", "file_write", "test_evaluation", "subagent"} or agent_name == "plan-execute"
 
 
 def _normalize_path(path: str) -> str:
@@ -185,6 +193,8 @@ def build_agent_graph(
             tool_args = tool_call.get("args", {})
             tool_id = tool_call["id"]
             user_confirmed = False
+            task_type = state.get("task_type", "")
+            deep_context = _is_deep_context_task(task_type, agent_name)
 
             perm = permissions.evaluate(tool_name, tool_args)
             if perm == "deny":
@@ -238,7 +248,8 @@ def build_agent_graph(
                 path = tool_args.get("path", "")
                 path_normalized = _normalize_path(path) if path else ""
                 targeted_read = tool_args.get("offset") is not None or tool_args.get("limit") is not None
-                if prior_read_file_count > READ_FILE_CALL_LIMIT:
+                read_file_limit = READ_FILE_CALL_LIMIT if deep_context else 24
+                if prior_read_file_count > read_file_limit:
                     tool_results.append(ToolMessage(
                         content=f"[BLOCKED] Too many read_file calls ({prior_read_file_count}). "
                                 f"You have read enough files. Summarize and answer from what you have. "
@@ -273,7 +284,9 @@ def build_agent_graph(
                 same_pattern_count = sum(1 for k in tool_ctx.seen_patterns if k == seen_key)
                 tool_ctx.seen_patterns.add(seen_key)
                 call_count = sum(1 for k in tool_ctx.seen_patterns if k.startswith(f"{tool_name}:"))
-                if same_pattern_count >= 2:
+                same_pattern_limit = 4 if deep_context else 2
+                search_call_limit = DEEP_SEARCH_CALL_LIMIT if deep_context else DEFAULT_SEARCH_CALL_LIMIT
+                if same_pattern_count >= same_pattern_limit:
                     tool_results.append(ToolMessage(
                         content=f"[Blocked] You've called {tool_name} with pattern='{pattern}' "
                                 f"{same_pattern_count} times. It keeps returning the same results. "
@@ -282,7 +295,7 @@ def build_agent_graph(
                         tool_call_id=tool_id,
                     ))
                     continue
-                if call_count > 6:
+                if call_count > search_call_limit:
                     tool_results.append(ToolMessage(
                         content=f"[Blocked] Too many {tool_name} calls ({call_count}). "
                                 f"Stop searching and answer from what you have. "
@@ -294,7 +307,8 @@ def build_agent_graph(
             if tool_name == "run_shell":
                 cmd = tool_args.get("command", "")
                 if isinstance(cmd, str):
-                    if prior_run_shell_count > 8:
+                    shell_call_limit = DEEP_SHELL_CALL_LIMIT if deep_context else DEFAULT_SHELL_CALL_LIMIT
+                    if prior_run_shell_count > shell_call_limit:
                         tool_results.append(ToolMessage(
                             content="[BLOCKED] Too many run_shell calls. "
                                     "You have used run_shell excessively. Switch to dedicated tools "

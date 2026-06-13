@@ -78,7 +78,7 @@ def test_context_manager_tool_result_limit_scales_with_context_window():
     medium = AgentContextManager(context_window=128_000)
     large = AgentContextManager(context_window=1_000_000)
 
-    assert small.tool_result_char_limit() == MIN_TOOL_RESULT_CHARS
+    assert small.tool_result_char_limit() > MIN_TOOL_RESULT_CHARS
     assert medium.tool_result_char_limit() > small.tool_result_char_limit()
     assert large.tool_result_char_limit() == MAX_TOOL_RESULT_CHARS
     assert large.tool_result_line_limit() > small.tool_result_line_limit()
@@ -87,7 +87,7 @@ def test_context_manager_tool_result_limit_scales_with_context_window():
 def test_context_manager_compresses_tool_results_with_dynamic_limit():
     store = DummyStore()
     manager = AgentContextManager(context_window=16_000, truncation_store=store)
-    content = "x" * 5000
+    content = "x" * (manager.tool_result_char_limit() + 100)
     messages = [
         AIMessage(content="", tool_calls=[{"id": "tc1", "name": "read_file", "args": {}}]),
         ToolMessage(content=content, tool_call_id="tc1"),
@@ -97,5 +97,5 @@ def test_context_manager_compresses_tool_results_with_dynamic_limit():
 
     assert isinstance(result[1], ToolMessage)
     assert "[Output truncated]" in result[1].content
-    assert store.saved[0][3] == MIN_TOOL_RESULT_CHARS
+    assert store.saved[0][3] == manager.tool_result_char_limit()
     assert store.saved[0][2] == manager.tool_result_line_limit()

@@ -26,27 +26,28 @@ from codepilot.plugins.manager import HookType, get_plugin_manager
 
 # Budget tuning: keep enough room for real development tasks while relying on
 # task routing, tool dedup, truncation and stop-early prompt rules to control waste.
-MAX_MESSAGES = 48
+MAX_MESSAGES = 96
 MAX_TOOL_RESULT_CHARS = agent_context.DEFAULT_TOOL_RESULT_CHARS
-MAX_ITERATIONS = 40
-HARD_ITERATION_LIMIT = 80
-GRAPH_RECURSION_LIMIT = 180
-MAX_RESPONSE_CHARS = 6000
+MAX_ITERATIONS = 80
+HARD_ITERATION_LIMIT = 200
+GRAPH_RECURSION_LIMIT = 420
+MAX_RESPONSE_CHARS = 24000
 FILE_SUMMARY_MAX_LINES = agent_context.FILE_SUMMARY_MAX_LINES
 FILE_SUMMARY_MAX_KEY_LINES = agent_context.FILE_SUMMARY_MAX_KEY_LINES
 FILE_SUMMARY_MAX_LINE_LEN = agent_context.FILE_SUMMARY_MAX_LINE_LEN
 
 TASK_ITERATION_LIMITS: dict[str, int] = {
-    "code_search": 12,
-    "project_analysis": 24,
+    "code_search": 20,
+    "project_analysis": 80,
     "general_question": 4,
-    "file_edit": 30,
-    "file_write": 30,
-    "command_run": 20,
-    "test_evaluation": 32,
-    "subagent": 36,
+    "file_edit": 96,
+    "file_write": 96,
+    "command_run": 56,
+    "test_evaluation": 112,
+    "subagent": 120,
 }
 DEFAULT_TASK_ITERATION_LIMIT = MAX_ITERATIONS
+DEEP_CONTEXT_TASKS = {"project_analysis", "file_edit", "file_write", "test_evaluation", "subagent"}
 
 
 def _extract_file_summaries(messages: list, files_context: list[str]) -> dict[str, str]:
@@ -115,6 +116,17 @@ def build_system_prompt_with_context(
             full_system += f"{agent_def.description}\n"
 
     remaining = iteration_limit - iteration_count
+    task_type = state.get("task_type", "")
+    deep_context = task_type in DEEP_CONTEXT_TASKS or agent_def.workflow == "plan_execute"
+    if deep_context:
+        full_system += (
+            "\n\n## Deep context mode\n"
+            "- This is a complex coding/analysis workflow. Prefer correctness and project understanding over minimal token use.\n"
+            "- read multiple relevant source files, tests, configuration files, and docs before making architectural conclusions.\n"
+            "- Use grep/glob to map the area, then read enough implementation context to understand behavior end to end.\n"
+            "- Token target: it is acceptable for a complete task to consume tens of thousands of tokens when that improves reliability.\n"
+            "- Do not stop after README-level evidence; cross-check claims against live source and verification results."
+        )
     if iteration_count > 0:
         full_system += (
             f"\n\n## Iteration Budget: {iteration_count}/{iteration_limit} tool rounds used "
@@ -126,7 +138,7 @@ def build_system_prompt_with_context(
             f"\n\n## WARNING: Only {remaining} tool call(s) remaining. "
             f"Prioritize the most important operation. Do NOT re-read files."
         )
-    if state.get("task_type") == "test_evaluation":
+    if task_type == "test_evaluation":
         full_system += (
             "\n\n## Test/evaluation task completion contract:\n"
             "- This is a test/evaluation task: run the requested app/test/lint commands when permitted.\n"
@@ -164,13 +176,15 @@ def truncate_response(
         return response
 
     if agent_def.is_readonly:
-        response_limit = 5000
-    elif total_tool_invocations >= 10:
-        response_limit = 5000
-    elif total_tool_invocations >= 3:
-        response_limit = 8000
-    else:
+        response_limit = 12000
+    elif agent_def.workflow == "plan_execute" or total_tool_invocations >= 20:
         response_limit = MAX_RESPONSE_CHARS
+    elif total_tool_invocations >= 10:
+        response_limit = 18000
+    elif total_tool_invocations >= 3:
+        response_limit = 12000
+    else:
+        response_limit = 8000
 
     if len(response.content) > response_limit:
         truncated = response.content[:response_limit]

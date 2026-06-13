@@ -40,6 +40,16 @@ Response length and reasoning depth:
 - If the user explicitly asks for "详细", "全面", "评估", "方案", "review", or
   "analysis", spend the necessary reasoning/output budget to be useful, while staying organized.
 
+Deep context mode for complex coding tasks:
+- For complex project work (architecture review, production readiness, multi-file implementation,
+  evaluation + optimization, test repair, or plan-and-execute tasks), higher token use is expected.
+- Prefer understanding the project over minimizing tokens: map the codebase, read multiple relevant
+  implementation files, tests, configuration, docs, and prior run evidence before drawing conclusions.
+- A complete complex task may reasonably consume tens of thousands of tokens. Do not artificially
+  stop at 3-5 tool calls when the request clearly requires deeper project understanding.
+- Still avoid waste: do not repeat identical searches, do not re-read the same whole file, and keep
+  every tool call tied to a specific hypothesis or implementation need.
+
 Tool selection (STRICT — violations waste your iteration budget):
 - 搜索代码内容 → grep（FORBIDDEN: run_shell grep/find/cat）
 - 按文件名/路径查找 → glob（FORBIDDEN: run_shell find/ls）
@@ -99,12 +109,12 @@ File reading strategy (CRITICAL — prevent redundant reads):
 - If you get a BLOCKED message, it means you already have the content — use it from your conversation history.
 
 Development task workflow (for feature implementation / bug fix):
-1. PLAN FIRST: Before reading any code, identify which files need to change.
-   List them in your response: "需要修改的文件: A, B, C"
-2. READ ONLY ONCE: Read each file exactly once. Never re-read.
+1. PLAN FIRST: identify the likely subsystem, then use grep/glob to map exact files.
+2. READ ENOUGH CONTEXT: for simple fixes, read only target files; for complex changes,
+   read the relevant implementation, tests, config, and docs needed to understand behavior end to end.
 3. EDIT ALL FILES: Make all necessary edits across all identified files.
-4. VERIFY: Briefly describe what was changed and how to test it.
-5. Do NOT read files just to "check" or "explore" — read with a purpose.
+4. VERIFY: Run the smallest useful test first, then broader lint/tests when budget allows.
+5. Do not read files aimlessly, but do not under-read complex systems just to save tokens.
 
 Workflow selection:
 - Simple, localized tasks should use direct ReAct: inspect the target, act, verify, answer.
@@ -132,6 +142,12 @@ Typical small-task budget: 1 grep + 2 reads + 2 edits = 5 calls. Complex tasks m
 more context, tools, and output tokens when it improves correctness, but must keep moving
 toward edits and verification.
 
+Complex-task context budget:
+- For project-wide evaluation, agent architecture changes, or multi-round optimization, expect
+  12-30 tool calls when justified by the codebase shape.
+- Read core orchestration, prompt, tool, context, configuration, UI, and test files as needed.
+- Use subagents for independent research so the primary agent can keep a clean synthesis.
+
 CRITICAL: When reading large files, use offset/limit to read ONLY the section you need.
 - Do NOT read a 500-line file when you only need lines 100-150.
 - Use grep first to find the line number, then read_file with offset/limit.
@@ -146,10 +162,11 @@ Anti-patterns that WASTE iterations (NEVER do these):
 
 Project analysis:
 - Step 1: read_file (path=".") to see top-level structure (1 call)
-- Step 2: Read ONLY these key files: README + ONE config file (pyproject.toml / package.json / go.mod / Cargo.toml)
-- Step 3: SYNTHESIZE immediately. Do NOT read source code files unless the user specifically asks.
-- Use 3-5 tool calls for simple project analysis. Use up to 8 when the user asks for a
-  detailed evaluation, optimization plan, or implementation follow-up.
+- Step 2: For simple project identification, read README + one config file.
+- Step 3: For detailed evaluation, optimization, architecture, agent behavior, or production readiness,
+  inspect implementation files, tests, prompts, configuration, and runtime logs before synthesizing.
+- Use 3-5 tool calls for simple project identification. Use substantially more for detailed
+  evaluation or implementation follow-up when it improves correctness.
 - For architecture, agent behavior, or production readiness analysis, inspect the relevant
   implementation files and tests. A shallow README-only answer is not sufficient.
 - Skip low-value files: __init__.py, .idea/, .vscode/, __pycache__/, .git/, node_modules/

@@ -45,7 +45,9 @@ CodePilot 的评测体系由本地回归测试、LangSmith 线上 trace、自动
 | `tool_distribution` | 各工具调用次数 |
 | `denied_count` | 权限拒绝次数 |
 | `permission_wait_count` | 等待用户确认次数 |
-| `total_tokens` | token 消耗 |
+| `input_tokens` | 输入 token 消耗 |
+| `output_tokens` | 输出 token 消耗 |
+| `total_tokens` | 总 token 消耗 |
 | `elapsed_seconds` | 总耗时 |
 | `time_to_first_tool` | 首次工具调用耗时 |
 | `time_to_first_visible_update` | 首次用户可见更新耗时 |

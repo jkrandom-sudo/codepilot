@@ -590,8 +590,8 @@ class TestIterationBudgetHardLimit:
 
     def test_hard_iteration_limit_defined(self):
         from codepilot.agent.nodes import HARD_ITERATION_LIMIT
-        assert HARD_ITERATION_LIMIT >= 70
-        assert HARD_ITERATION_LIMIT <= 90
+        assert HARD_ITERATION_LIMIT >= 160
+        assert HARD_ITERATION_LIMIT <= 240
 
     def test_max_iterations_within_hard_limit(self):
         from codepilot.agent.nodes import MAX_ITERATIONS
@@ -606,13 +606,14 @@ class TestIterationBudgetHardLimit:
     def test_complex_task_limits_allow_real_workflows(self):
         from codepilot.agent.nodes import GRAPH_RECURSION_LIMIT, HARD_ITERATION_LIMIT, TASK_ITERATION_LIMITS
 
-        assert HARD_ITERATION_LIMIT == 80
+        assert HARD_ITERATION_LIMIT >= 160
         assert GRAPH_RECURSION_LIMIT >= HARD_ITERATION_LIMIT * 2
-        assert TASK_ITERATION_LIMITS["file_edit"] >= 30
-        assert TASK_ITERATION_LIMITS["file_write"] >= 30
-        assert TASK_ITERATION_LIMITS["project_analysis"] >= 24
-        assert TASK_ITERATION_LIMITS["command_run"] >= 20
-        assert TASK_ITERATION_LIMITS["test_evaluation"] >= 32
+        assert TASK_ITERATION_LIMITS["file_edit"] >= 80
+        assert TASK_ITERATION_LIMITS["file_write"] >= 80
+        assert TASK_ITERATION_LIMITS["project_analysis"] >= 72
+        assert TASK_ITERATION_LIMITS["command_run"] >= 48
+        assert TASK_ITERATION_LIMITS["test_evaluation"] >= 96
+        assert TASK_ITERATION_LIMITS["subagent"] >= 96
 
 
 class TestResponseLengthLimit:
@@ -621,7 +622,7 @@ class TestResponseLengthLimit:
     def test_max_response_chars_defined(self):
         from codepilot.agent.nodes import MAX_RESPONSE_CHARS
         assert MAX_RESPONSE_CHARS > 0
-        assert MAX_RESPONSE_CHARS <= 20000
+        assert MAX_RESPONSE_CHARS <= 32000
 
     def test_response_limit_allows_detailed_coding_summaries(self):
         from langchain_core.messages import AIMessage
@@ -639,21 +640,37 @@ class TestResponseLengthLimit:
 
         assert len(truncated.content) == 7000
 
+    def test_response_limit_allows_deep_complex_task_reports(self):
+        from langchain_core.messages import AIMessage
+
+        from codepilot.agent.nodes import truncate_response
+        from codepilot.agent.registry import AgentRegistry
+
+        agent_def = AgentRegistry().get_or_default("plan-execute")
+        response = AIMessage(content="x" * 18000)
+        truncated = truncate_response(
+            response,
+            agent_def=agent_def,
+            total_tool_invocations=40,
+        )
+
+        assert len(truncated.content) == 18000
+
     def test_max_tokens_for_providers(self):
         from codepilot.config.providers import DEFAULT_MAX_TOKENS, MODEL_MAX_TOKENS
-        assert DEFAULT_MAX_TOKENS >= 8192
+        assert DEFAULT_MAX_TOKENS >= 16384
         for model_key, tokens in MODEL_MAX_TOKENS.items():
-            assert tokens >= 8192
+            assert tokens >= 16384
             assert tokens <= 32768
 
     def test_provider_max_tokens_method(self):
         from codepilot.config.providers import ProviderRegistry
         from codepilot.config.settings import AppSettings
         registry = ProviderRegistry(AppSettings())
-        assert registry._get_max_tokens("deepseek-chat") == 8192
-        assert registry._get_max_tokens("glm-5.1") == 8192
-        assert registry._get_max_tokens("unknown-model") == 8192
-        assert registry._get_max_tokens("claude-sonnet-4-20250514") == 16384
+        assert registry._get_max_tokens("deepseek-chat") == 16384
+        assert registry._get_max_tokens("glm-5.1") == 16384
+        assert registry._get_max_tokens("unknown-model") == 16384
+        assert registry._get_max_tokens("claude-sonnet-4-20250514") == 32768
 
 
 class TestRateLimitRetry:

@@ -13,15 +13,16 @@ from codepilot.config.settings import AppSettings, ProviderConfig
 logger = logging.getLogger(__name__)
 
 LEGACY_DEFAULT_MAX_TOKENS = 4096
-DEFAULT_MAX_TOKENS = 8192
+LEGACY_MAX_TOKEN_DEFAULTS = {4096, 8192}
+DEFAULT_MAX_TOKENS = 16384
 
 MODEL_MAX_TOKENS: dict[str, int] = {
-    "deepseek": 8192,
-    "glm": 8192,
-    "qwen": 8192,
-    "gpt": 8192,
-    "claude": 16384,
-    "gemini": 16384,
+    "deepseek": 16384,
+    "glm": 16384,
+    "qwen": 16384,
+    "gpt": 16384,
+    "claude": 32768,
+    "gemini": 32768,
 }
 
 RATE_LIMIT_MAX_RETRIES = 3
@@ -135,7 +136,7 @@ class ProviderRegistry:
         if (
             cfg is not None
             and cfg.max_tokens
-            and cfg.max_tokens not in {LEGACY_DEFAULT_MAX_TOKENS, DEFAULT_MAX_TOKENS}
+            and cfg.max_tokens not in LEGACY_MAX_TOKEN_DEFAULTS | {DEFAULT_MAX_TOKENS}
         ):
             return cfg.max_tokens
         name_lower = model_name.lower()

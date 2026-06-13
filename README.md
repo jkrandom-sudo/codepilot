@@ -238,7 +238,7 @@ REPL 中可使用 `/init` 初始化 `AGENTS.md`：
 
 所有会话自动保存到 SQLite 数据库 `~/.codepilot/data/codepilot.db`，支持 `--resume`、`--resume-last`、`/sessions` 和 `/resume`。
 
-LangSmith 追踪在 `langsmith.enabled: true` 且 API Key 存在时自动开启。追踪数据包含 Agent、模型、任务类型、工具调用链、token、延迟和非交互任务指标。
+LangSmith 追踪在 `langsmith.enabled: true` 且 API Key 存在时自动开启。追踪数据包含 Agent、模型、任务类型、工具调用链、输入 token、输出 token、总 token、延迟和非交互任务指标。
 
 ## 开发
 
