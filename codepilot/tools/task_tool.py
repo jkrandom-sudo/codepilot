@@ -53,7 +53,7 @@ def run_subagent(
             import logging
             logging.getLogger(__name__).warning("Failed to create subagent session %s", child_session_id)
 
-    from codepilot.agent.graph import build_agent_graph
+    from codepilot.agent.graph import build_agent_graph, graph_recursion_limit
     from codepilot.config.context_windows import get_usable_context
 
     model_name = getattr(llm, "model", "") or ""
@@ -93,7 +93,7 @@ def run_subagent(
         final_state = graph.invoke(
             child_state,
             config={
-                "recursion_limit": agent_def.steps * 2 + 10,
+                "recursion_limit": graph_recursion_limit(),
                 "run_name": f"subagent_{subagent_type}",
             },
         )

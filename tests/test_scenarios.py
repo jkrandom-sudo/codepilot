@@ -590,8 +590,8 @@ class TestIterationBudgetHardLimit:
 
     def test_hard_iteration_limit_defined(self):
         from codepilot.agent.nodes import HARD_ITERATION_LIMIT
-        assert HARD_ITERATION_LIMIT >= 25
-        assert HARD_ITERATION_LIMIT <= 40
+        assert HARD_ITERATION_LIMIT >= 70
+        assert HARD_ITERATION_LIMIT <= 90
 
     def test_max_iterations_within_hard_limit(self):
         from codepilot.agent.nodes import MAX_ITERATIONS
@@ -604,14 +604,15 @@ class TestIterationBudgetHardLimit:
             assert limit <= HARD_ITERATION_LIMIT, f"{task_type} limit {limit} exceeds hard limit"
 
     def test_complex_task_limits_allow_real_workflows(self):
-        from codepilot.agent.nodes import HARD_ITERATION_LIMIT, TASK_ITERATION_LIMITS
+        from codepilot.agent.nodes import GRAPH_RECURSION_LIMIT, HARD_ITERATION_LIMIT, TASK_ITERATION_LIMITS
 
-        assert HARD_ITERATION_LIMIT == 40
-        assert TASK_ITERATION_LIMITS["file_edit"] >= 12
-        assert TASK_ITERATION_LIMITS["file_write"] >= 12
-        assert TASK_ITERATION_LIMITS["project_analysis"] >= 10
-        assert TASK_ITERATION_LIMITS["command_run"] >= 8
-        assert TASK_ITERATION_LIMITS["test_evaluation"] >= 18
+        assert HARD_ITERATION_LIMIT == 80
+        assert GRAPH_RECURSION_LIMIT >= HARD_ITERATION_LIMIT * 2
+        assert TASK_ITERATION_LIMITS["file_edit"] >= 30
+        assert TASK_ITERATION_LIMITS["file_write"] >= 30
+        assert TASK_ITERATION_LIMITS["project_analysis"] >= 24
+        assert TASK_ITERATION_LIMITS["command_run"] >= 20
+        assert TASK_ITERATION_LIMITS["test_evaluation"] >= 32
 
 
 class TestResponseLengthLimit:

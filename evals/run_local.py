@@ -20,7 +20,7 @@ import time
 
 from langchain_core.messages import AIMessage, HumanMessage
 
-from codepilot.agent.graph import build_agent_graph
+from codepilot.agent.graph import build_agent_graph, graph_recursion_limit
 from codepilot.config.providers import ProviderRegistry
 from codepilot.config.settings import load_config
 
@@ -701,7 +701,7 @@ def run_scenario(
                     "agent_name": agent_name,
                     "session_id": f"eval-{int(start)}",
                 },
-                config={"recursion_limit": 60},
+                config={"recursion_limit": graph_recursion_limit()},
             )
             messages = result.get("messages", [])
             error = None

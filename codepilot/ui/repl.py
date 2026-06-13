@@ -470,6 +470,8 @@ class REPL:
         self._activity_paused_for_prompt = False
 
     def _run_agent(self) -> None:
+        from codepilot.agent.graph import graph_recursion_limit
+
         self.renderer.render_task_start(
             self._task_user_input,
             model=self.model,
@@ -513,7 +515,7 @@ class REPL:
                 "session_id": self._session_id or "",
             },
             config={
-                "recursion_limit": 60,
+                "recursion_limit": graph_recursion_limit(),
                 "run_name": task_type,
                 "callbacks": callbacks,
                 "metadata": {
@@ -873,7 +875,7 @@ class REPL:
 
         task_type = classify_task(self._task_user_input)
         task_limit = TASK_ITERATION_LIMITS.get(task_type)
-        if task_limit is not None and self._task_iteration_count >= task_limit:
+        if task_limit is not None and self._task_iteration_count > task_limit:
             return "partial"
         if self._task_did_test and self._task_tests_passed is False:
             return "partial"

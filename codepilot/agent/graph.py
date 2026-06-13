@@ -11,6 +11,7 @@ from codepilot.agent._utils import validate_message_pairs
 from codepilot.agent.context_manager import AgentContextManager
 from codepilot.agent.nodes import (
     HARD_ITERATION_LIMIT,
+    GRAPH_RECURSION_LIMIT,
     MAX_TOOL_RESULT_CHARS,
     TASK_ITERATION_LIMITS,
     _tool_round_count,
@@ -424,10 +425,15 @@ def build_agent_graph(
                 f"[System: 已达迭代上限（{iteration_limit_val} 轮工具调用）。"
                 "这是测试/评估任务：只能基于已经出现的真实工具结果总结。"
                 "如果没有看到实际命令输出、退出码或工具结果，不要产出通过/失败结论，"
-                "必须明确标记为“未完成验证”，并列出缺失的命令或结果。不要再调用工具。]"
+                "必须明确标记为“未完成验证”，并列出缺失的命令或结果。"
+                "不要再调用工具，也不要要求用户重置迭代上限或稍后 ping 你。]"
             )
         else:
-            content = f"[System: 已达迭代上限（{iteration_limit_val} 轮工具调用）。请根据已收集的信息给出总结，不要再调用工具。]"
+            content = (
+                f"[System: 已达迭代上限（{iteration_limit_val} 轮工具调用）。"
+                "请根据已收集的信息给出尽可能完整的当前结论、已完成项、未完成项和下一步。"
+                "不要再调用工具，也不要要求用户重置迭代上限或稍后 ping 你。]"
+            )
         hint = HumanMessage(
             content=content
         )
@@ -461,3 +467,8 @@ def build_agent_graph(
     graph.add_edge("force_end", END)
 
     return graph.compile()
+
+
+def graph_recursion_limit() -> int:
+    """Return the runtime recursion limit used by top-level graph invocations."""
+    return GRAPH_RECURSION_LIMIT

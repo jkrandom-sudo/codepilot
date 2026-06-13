@@ -77,7 +77,7 @@ class TestPrompts:
         assert "迭代预算有限" in prompt
 
     def test_runtime_prompt_uses_effective_task_budget(self):
-        from codepilot.agent.nodes import build_system_prompt_with_context
+        from codepilot.agent.nodes import HARD_ITERATION_LIMIT, TASK_ITERATION_LIMITS, build_system_prompt_with_context
         from codepilot.agent.registry import AgentRegistry
 
         state: AgentState = {
@@ -89,18 +89,19 @@ class TestPrompts:
             "session_id": "test",
         }
         agent_def = AgentRegistry().get_or_default("build")
+        iteration_limit = TASK_ITERATION_LIMITS["file_edit"]
         prompt = build_system_prompt_with_context(
             "Base prompt",
             state,
             agent_def=agent_def,
-            iteration_count=14,
+            iteration_count=iteration_limit - 1,
             total_tool_invocations=20,
-            iteration_limit=15,
+            iteration_limit=iteration_limit,
             file_summaries={},
         )
 
-        assert "14/15 tool rounds used" in prompt
-        assert "hard limit: 40" in prompt
+        assert f"{iteration_limit - 1}/{iteration_limit} tool rounds used" in prompt
+        assert f"hard limit: {HARD_ITERATION_LIMIT}" in prompt
 
     def test_runtime_prompt_warns_test_evaluation_requires_real_results(self):
         from codepilot.agent.nodes import build_system_prompt_with_context

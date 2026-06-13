@@ -49,6 +49,7 @@ def _task_metrics(run) -> dict:
 
 
 def _child_tool_metrics(client: Client, project_id: str, run, limit: int) -> tuple[Counter, int]:
+    limit = min(limit, 100)
     child_runs = list(client.list_runs(
         project_id=project_id,
         trace_id=run.trace_id or run.id,

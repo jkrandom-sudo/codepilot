@@ -28,22 +28,23 @@ from codepilot.plugins.manager import HookType, get_plugin_manager
 # task routing, tool dedup, truncation and stop-early prompt rules to control waste.
 MAX_MESSAGES = 48
 MAX_TOOL_RESULT_CHARS = agent_context.DEFAULT_TOOL_RESULT_CHARS
-MAX_ITERATIONS = 25
-HARD_ITERATION_LIMIT = 40
+MAX_ITERATIONS = 40
+HARD_ITERATION_LIMIT = 80
+GRAPH_RECURSION_LIMIT = 180
 MAX_RESPONSE_CHARS = 6000
 FILE_SUMMARY_MAX_LINES = agent_context.FILE_SUMMARY_MAX_LINES
 FILE_SUMMARY_MAX_KEY_LINES = agent_context.FILE_SUMMARY_MAX_KEY_LINES
 FILE_SUMMARY_MAX_LINE_LEN = agent_context.FILE_SUMMARY_MAX_LINE_LEN
 
 TASK_ITERATION_LIMITS: dict[str, int] = {
-    "code_search": 8,
-    "project_analysis": 12,
-    "general_question": 2,
-    "file_edit": 15,
-    "file_write": 15,
-    "command_run": 12,
-    "test_evaluation": 20,
-    "subagent": 24,
+    "code_search": 12,
+    "project_analysis": 24,
+    "general_question": 4,
+    "file_edit": 30,
+    "file_write": 30,
+    "command_run": 20,
+    "test_evaluation": 32,
+    "subagent": 36,
 }
 DEFAULT_TASK_ITERATION_LIMIT = MAX_ITERATIONS
 

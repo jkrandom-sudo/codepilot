@@ -129,7 +129,7 @@ def _run_interactive(registry, model: str, agent_name: str = "build", confirm: b
 
 
 def _run_non_interactive(registry, model: str, agent_name: str, confirm: bool, prompt: str) -> None:
-    from codepilot.agent.graph import build_agent_graph
+    from codepilot.agent.graph import build_agent_graph, graph_recursion_limit
     from codepilot.config.permissions import PermissionRuleset
     from codepilot.storage.db import new_session_id
     from codepilot.ui.intent import chat_response, classify_intent, classify_task, greeting_response
@@ -171,7 +171,7 @@ def _run_non_interactive(registry, model: str, agent_name: str, confirm: bool, p
         "session_id": session_id,
     }
     graph_config = {
-        "recursion_limit": 60,
+        "recursion_limit": graph_recursion_limit(),
         "run_name": task_type,
         "metadata": {
             "model": model,

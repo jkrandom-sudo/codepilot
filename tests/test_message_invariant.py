@@ -249,7 +249,7 @@ class TestCompressToolResultsInvariant:
 
 class TestIterationLimit:
     def test_max_iterations_is_reasonable(self):
-        assert MAX_ITERATIONS == 25
+        assert MAX_ITERATIONS == 40
 
     def test_iteration_count_in_conversation(self):
         """Verify we can count iterations from messages."""
