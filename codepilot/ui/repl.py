@@ -899,12 +899,14 @@ class REPL:
             return "partial"
         if self._task_had_error:
             return "error"
+        if self._task_tools == 0 and self._task_iteration_count == 0:
+            return "no_op"
         from codepilot.agent.nodes import TASK_ITERATION_LIMITS
 
         task_type = classify_task(self._task_user_input)
         task_limit = TASK_ITERATION_LIMITS.get(task_type)
         if task_limit is not None and self._task_iteration_count > task_limit:
-            return "partial"
+            return "timeout"
         if self._task_did_test and self._task_tests_passed is False:
             return "partial"
         return "success"

@@ -127,7 +127,7 @@ def test_permission_choice_falls_back_to_numeric_input(monkeypatch):
     assert prompt_permission_choice() == "deny"
 
 
-def test_task_outcome_only_partial_after_exceeding_iteration_limit():
+def test_task_outcome_timeout_after_exceeding_iteration_limit():
     from codepilot.agent.nodes import TASK_ITERATION_LIMITS
 
     repl = REPL.__new__(REPL)
@@ -141,7 +141,7 @@ def test_task_outcome_only_partial_after_exceeding_iteration_limit():
     assert repl._task_outcome(elapsed=10.0) == "success"
 
     repl._task_iteration_count = TASK_ITERATION_LIMITS["file_edit"] + 1
-    assert repl._task_outcome(elapsed=10.0) == "partial"
+    assert repl._task_outcome(elapsed=10.0) == "timeout"
 
 
 def test_permission_choice_uses_inline_prompt_session(monkeypatch):

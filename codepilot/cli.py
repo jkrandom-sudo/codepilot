@@ -204,23 +204,31 @@ def _run_non_interactive(registry, model: str, agent_name: str, confirm: bool, p
             "non_interactive",
         ],
     }
+    error_messages: list = []
     try:
         result = _invoke_graph_with_heartbeat(graph, graph_input, graph_config)
+        _report_non_interactive_to_langsmith(
+            session_id=session_id,
+            task_start=task_start,
+            messages=result.get("messages", []),
+            model=model,
+            agent_name=selected_agent,
+            task_type=task_type,
+        )
+        click.echo("✅ 任务完成", err=True)
+        for content in _non_interactive_output(result.get("messages", [])):
+            click.echo(content)
     except Exception as e:
+        _report_non_interactive_to_langsmith(
+            session_id=session_id,
+            task_start=task_start,
+            messages=error_messages,
+            model=model,
+            agent_name=selected_agent,
+            task_type=task_type,
+            is_error=True,
+        )
         raise click.ClickException(_format_non_interactive_error(e)) from None
-
-    _report_non_interactive_to_langsmith(
-        session_id=session_id,
-        task_start=task_start,
-        messages=result.get("messages", []),
-        model=model,
-        agent_name=selected_agent,
-        task_type=task_type,
-    )
-
-    click.echo("✅ 任务完成", err=True)
-    for content in _non_interactive_output(result.get("messages", [])):
-        click.echo(content)
 
 
 def _invoke_graph_with_heartbeat(
@@ -262,7 +270,7 @@ def _short_error(detail: str, limit: int = 300) -> str:
     return text[: limit - 3] + "..."
 
 
-def _non_interactive_task_metrics(messages: list, elapsed: float) -> dict:
+def _non_interactive_task_metrics(messages: list, elapsed: float, task_type: str = "") -> dict:
     tool_names: list[str] = []
     token_accumulator = TokenUsageAccumulator()
     iteration_count = 0
@@ -292,13 +300,21 @@ def _non_interactive_task_metrics(messages: list, elapsed: float) -> dict:
                 elif " passed" in content or "all checks passed" in content:
                     tests_passed = True
 
+    tool_count = len(tool_names)
     outcome = "success"
+    if iteration_count == 0 and tool_count == 0:
+        outcome = "no_op"
     if tests_passed is False:
         outcome = "partial"
+    if task_type:
+        from codepilot.agent.nodes import TASK_ITERATION_LIMITS
+        task_limit = TASK_ITERATION_LIMITS.get(task_type)
+        if task_limit is not None and iteration_count > task_limit:
+            outcome = "timeout"
 
     return {
         "iteration_count": iteration_count,
-        "tool_call_count": len(tool_names),
+        "tool_call_count": tool_count,
         "tool_distribution": dict(Counter(tool_names)),
         "input_tokens": token_accumulator.total.input_tokens,
         "output_tokens": token_accumulator.total.output_tokens,
@@ -319,6 +335,7 @@ def _report_non_interactive_to_langsmith(
     model: str,
     agent_name: str,
     task_type: str,
+    is_error: bool = False,
 ) -> None:
     if os.environ.get("LANGSMITH_TRACING") != "true":
         return
@@ -328,7 +345,9 @@ def _report_non_interactive_to_langsmith(
         from langsmith import Client
 
         elapsed = time.time() - task_start
-        metrics = _non_interactive_task_metrics(messages, elapsed)
+        metrics = _non_interactive_task_metrics(messages, elapsed, task_type)
+        if is_error:
+            metrics["outcome"] = "error"
         client = Client()
         task_start_utc = datetime.fromtimestamp(task_start, tz=timezone.utc)
         root_run = None
@@ -354,6 +373,10 @@ def _report_non_interactive_to_langsmith(
             f"input_tokens={metrics['input_tokens']}, output_tokens={metrics['output_tokens']}, "
             f"elapsed={metrics['elapsed_seconds']:.1f}s, model={model}, "
             f"agent={agent_name}, task_type={task_type}"
+        )
+        client.update_run(
+            run_id=root_run.id,
+            extra={"task_metrics": metrics},
         )
         feedback_items = [
             ("task_outcome", 1.0 if metrics["outcome"] == "success" else 0.5, metric_comment),
