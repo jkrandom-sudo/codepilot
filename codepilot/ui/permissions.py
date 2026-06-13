@@ -86,9 +86,9 @@ def prompt_permission_choice() -> PermissionChoice:
                 rendered = []
                 for idx, (_, label) in enumerate(PERMISSION_CHOICES):
                     prefix = "▶ " if idx == selected["index"] else "  "
-                    style = "permission.selected" if idx == selected["index"] else "permission.normal"
+                    style = "class:permission.selected" if idx == selected["index"] else "class:permission.normal"
                     rendered.append((style, f"{prefix}{idx + 1}. {label}  "))
-                rendered.append(("permission.hint", "  ↑/↓ 选择 · Enter 确认 · Esc 取消"))
+                rendered.append(("class:permission.hint", "  ↑/↓ 选择 · Enter 确认 · Esc 取消"))
                 return rendered
 
             session = PromptSession()

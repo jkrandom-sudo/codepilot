@@ -154,6 +154,8 @@ def test_permission_choice_uses_inline_prompt_session(monkeypatch):
     assert kwargs["multiline"] is False
     assert kwargs["bottom_toolbar"] is not None
     assert kwargs["reserve_space_for_menu"] == 0
+    toolbar_styles = [style for style, _text in kwargs["bottom_toolbar"]()]
+    assert all(style.startswith("class:") for style in toolbar_styles)
 
 
 def test_numeric_reply_expands_when_previous_ai_asked_numbered_choice():
