@@ -25,6 +25,8 @@ def test_hatch_build_includes_package_and_builtin_skills():
 def test_readme_documents_github_install_path():
     readme = (ROOT / "README.md").read_text()
 
+    assert 'uv tool install "git+https://github.com/jkrandom-sudo/codepilot.git"' in readme
     assert 'pipx install "git+https://github.com/jkrandom-sudo/codepilot.git"' in readme
     assert 'python3.11 -m pip install "git+https://github.com/jkrandom-sudo/codepilot.git"' in readme
     assert "pipx upgrade codepilot" in readme
+    assert "python3.11 -m pip install --user pipx" not in readme

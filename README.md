@@ -34,16 +34,35 @@ pip install -e ".[dev,mcp]"
 
 ## 从 GitHub 安装
 
-推荐使用 `pipx` 从 GitHub 安装，安装后会直接生成 `codepilot` 命令，并与系统 Python 环境隔离：
+如果你的 Python 由 `uv` 管理，直接用 `uv tool install` 安装。这样不会触发 PEP 668 的 `externally-managed-environment` 错误：
 
 ```bash
-python3.11 -m pip install --user pipx
-python3.11 -m pipx ensurepath
+uv tool install "git+https://github.com/jkrandom-sudo/codepilot.git"
+codepilot --version
+```
+
+如果提示找不到 `codepilot` 命令，先让 uv 更新 shell PATH，然后重开终端：
+
+```bash
+uv tool update-shell
+```
+
+升级到 GitHub 最新版本：
+
+```bash
+uv tool upgrade codepilot
+```
+
+也可以使用 `pipx` 从 GitHub 安装，安装后同样会直接生成 `codepilot` 命令，并与系统 Python 环境隔离。macOS 推荐通过 Homebrew 安装 `pipx`，不要在 uv 管理的 Python 上执行 `pip install --user pipx`：
+
+```bash
+brew install pipx
+pipx ensurepath
 pipx install "git+https://github.com/jkrandom-sudo/codepilot.git"
 codepilot --version
 ```
 
-升级到 GitHub 最新版本：
+使用 `pipx` 升级：
 
 ```bash
 pipx upgrade codepilot
