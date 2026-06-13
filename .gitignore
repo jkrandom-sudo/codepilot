@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.tox/
+.coverage
+htmlcov/
+
+# Virtual environments and local runtime data
+.venv/
+venv/
+env/
+.env
+.env.*
+!.env.example
+*.sqlite
+*.sqlite3
+*.db
+
+# Local IDE / OS files
+.DS_Store
+.idea/
+.vscode/
+*.iml
+
+# Local assistant/tool state
+.claude/settings.local.json
+.codex/
+.codepilot/data/
+.codepilot/logs/
+
+# Temporary scratch files
+tmp_*
+*.tmp
+*.bak
