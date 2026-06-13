@@ -44,6 +44,24 @@ mcp = [
 [project.scripts]
 codepilot = "codepilot.cli:main"
 
+[tool.hatch.build.targets.wheel]
+packages = ["codepilot"]
+artifacts = [
+    "codepilot/skills/builtin/*/SKILL.md",
+]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/AGENTS.md",
+    "/README.md",
+    "/codepilot",
+    "/docs",
+    "/evals",
+    "/opencode_analysis.pdf",
+    "/pyproject.toml",
+    "/tests",
+]
+
 [tool.ruff]
 line-length = 100
 target-version = "py311"

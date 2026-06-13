@@ -32,6 +32,36 @@ codepilot --agent plan
 pip install -e ".[dev,mcp]"
 ```
 
+## 从 GitHub 安装
+
+推荐使用 `pipx` 从 GitHub 安装，安装后会直接生成 `codepilot` 命令，并与系统 Python 环境隔离：
+
+```bash
+python3.11 -m pip install --user pipx
+python3.11 -m pipx ensurepath
+pipx install "git+https://github.com/jkrandom-sudo/codepilot.git"
+codepilot --version
+```
+
+升级到 GitHub 最新版本：
+
+```bash
+pipx upgrade codepilot
+```
+
+如果不使用 `pipx`，也可以直接安装到当前 Python 环境：
+
+```bash
+python3.11 -m pip install "git+https://github.com/jkrandom-sudo/codepilot.git"
+codepilot
+```
+
+如需 MCP SDK 支持，可安装额外依赖：
+
+```bash
+pipx inject codepilot "mcp>=1.0.0"
+```
+
 ## CLI 参数
 
 | 参数 | 缩写 | 说明 |
