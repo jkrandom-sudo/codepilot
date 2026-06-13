@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import time
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
@@ -28,6 +29,20 @@ TOOL_ERROR_PREFIXES = (
     "blocked:",
     "[permission denied]",
     "permission denied",
+)
+
+CHOICE_REPLY_RE = re.compile(r"^\s*(?:选|选择|第)?\s*([1-9]\d*)\s*(?:个|项|号)?\s*[.。]?\s*$")
+NUMBERED_OPTION_RE = re.compile(r"(?m)^\s*(?:\[\s*)?([1-9]\d*)(?:\s*\])?[\s.、)]+\S+")
+CHOICE_PROMPT_MARKERS = (
+    "需要我执行其中哪一个",
+    "请选择",
+    "选哪一个",
+    "哪一个",
+    "任选",
+    "建议操作",
+    "which one",
+    "choose one",
+    "select one",
 )
 
 
@@ -69,6 +84,34 @@ def resolve_tool_message(tool_calls_by_id: dict[str, dict], msg: ToolMessage) ->
     tool_name = tc_info.get("name") or getattr(msg, "name", None) or "unknown"
     tool_args = tc_info.get("args", {})
     return tool_name, tool_args, tc_info
+
+
+def expand_numbered_choice_reply(user_input: str, messages: list[BaseMessage]) -> str:
+    """Expand a bare numeric reply when the previous AI message asked for a choice."""
+    match = CHOICE_REPLY_RE.match(user_input)
+    if not match:
+        return user_input
+
+    previous_ai = ""
+    for msg in reversed(messages):
+        if isinstance(msg, AIMessage) and isinstance(msg.content, str):
+            previous_ai = msg.content
+            break
+    if not previous_ai:
+        return user_input
+
+    lower = previous_ai.lower()
+    has_choice_prompt = any(marker in lower for marker in CHOICE_PROMPT_MARKERS)
+    option_numbers = set(NUMBERED_OPTION_RE.findall(previous_ai))
+    selected = match.group(1)
+
+    if not has_choice_prompt or selected not in option_numbers or len(option_numbers) < 2:
+        return user_input
+
+    return (
+        f"用户选择了上一条建议操作中的第 {selected} 项。\n"
+        "请根据上一条消息中的编号选项执行该项；如果该项需要工具调用，请继续调用相应工具。"
+    )
 
 
 class REPL:
@@ -261,6 +304,7 @@ class REPL:
                 continue
 
             clean_input, ref_content = parse_references(user_input)
+            clean_input = expand_numbered_choice_reply(clean_input, self.messages)
             full_input = clean_input
             if ref_content:
                 full_input = f"{clean_input}\n\n--- Referenced content ---\n{ref_content}"

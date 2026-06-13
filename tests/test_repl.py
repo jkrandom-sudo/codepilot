@@ -1,6 +1,12 @@
-from langchain_core.messages import ToolMessage
+from langchain_core.messages import AIMessage, ToolMessage
 
-from codepilot.ui.repl import REPL, is_tool_result_error, resolve_tool_message, tool_result_status
+from codepilot.ui.repl import (
+    REPL,
+    expand_numbered_choice_reply,
+    is_tool_result_error,
+    resolve_tool_message,
+    tool_result_status,
+)
 
 
 class FakePermissionRenderer:
@@ -91,3 +97,25 @@ def test_permission_prompt_pauses_activity_while_waiting_for_input(monkeypatch):
     assert repl.renderer.events[0] == ("stop", "activity")
     assert repl.renderer.events[1][0] == "choice"
     assert repl.renderer.events[-1][0] == "resume"
+
+
+def test_numeric_reply_expands_when_previous_ai_asked_numbered_choice():
+    previous = AIMessage(content=(
+        "建议操作（任选）：\n\n"
+        "1 连上公司 VPN / 内网后重试 git fetch origin develop && git checkout develop && git pull\n"
+        "2 仅切到本地已有的 develop（不拉新）：git checkout develop\n"
+        "3 检查代理/remote：git remote -v、git config --get http.proxy\n\n"
+        "需要我执行其中哪一个？"
+    ))
+
+    expanded = expand_numbered_choice_reply("2", [previous])
+
+    assert expanded != "2"
+    assert "用户选择了上一条建议操作中的第 2 项" in expanded
+    assert "请根据上一条消息中的编号选项执行该项" in expanded
+
+
+def test_numeric_reply_is_unchanged_without_previous_choice_prompt():
+    expanded = expand_numbered_choice_reply("2", [AIMessage(content="Hello!")])
+
+    assert expanded == "2"
