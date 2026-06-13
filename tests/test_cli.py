@@ -165,3 +165,31 @@ def test_non_interactive_task_metrics_counts_input_and_output_tokens():
     assert metrics["input_tokens"] == 30
     assert metrics["output_tokens"] == 12
     assert metrics["total_tokens"] == 42
+
+
+def test_non_interactive_task_metrics_deduplicates_ai_message_usage_by_id():
+    duplicate = AIMessage(
+        content="done",
+        id="run-1",
+        usage_metadata={"input_tokens": 10, "output_tokens": 5, "total_tokens": 15},
+    )
+
+    metrics = _non_interactive_task_metrics([duplicate, duplicate], elapsed=1.0)
+
+    assert metrics["input_tokens"] == 10
+    assert metrics["output_tokens"] == 5
+    assert metrics["total_tokens"] == 15
+
+
+def test_non_interactive_task_metrics_deduplicates_same_ai_message_object_without_id():
+    duplicate = AIMessage(
+        content="done",
+        usage_metadata={"input_tokens": 6, "output_tokens": 4, "total_tokens": 10},
+    )
+    duplicate.id = None
+
+    metrics = _non_interactive_task_metrics([duplicate, duplicate], elapsed=1.0)
+
+    assert metrics["input_tokens"] == 6
+    assert metrics["output_tokens"] == 4
+    assert metrics["total_tokens"] == 10

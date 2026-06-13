@@ -7,7 +7,7 @@ import click
 from langchain_core.messages import AIMessage, ToolMessage
 
 from codepilot import __version__
-from codepilot.utils.token_usage import TokenUsage, extract_token_usage
+from codepilot.utils.token_usage import TokenUsageAccumulator
 
 
 NON_INTERACTIVE_HEARTBEAT_INTERVAL = 15.0
@@ -264,14 +264,14 @@ def _short_error(detail: str, limit: int = 300) -> str:
 
 def _non_interactive_task_metrics(messages: list, elapsed: float) -> dict:
     tool_names: list[str] = []
-    token_usage = TokenUsage()
+    token_accumulator = TokenUsageAccumulator()
     iteration_count = 0
     did_test = False
     tests_passed: bool | None = None
 
     for msg in messages:
         if isinstance(msg, AIMessage):
-            token_usage += extract_token_usage(msg)
+            token_accumulator.add_message(msg)
             tool_calls = getattr(msg, "tool_calls", None) or []
             if tool_calls:
                 iteration_count += 1
@@ -300,9 +300,9 @@ def _non_interactive_task_metrics(messages: list, elapsed: float) -> dict:
         "iteration_count": iteration_count,
         "tool_call_count": len(tool_names),
         "tool_distribution": dict(Counter(tool_names)),
-        "input_tokens": token_usage.input_tokens,
-        "output_tokens": token_usage.output_tokens,
-        "total_tokens": token_usage.total_tokens,
+        "input_tokens": token_accumulator.total.input_tokens,
+        "output_tokens": token_accumulator.total.output_tokens,
+        "total_tokens": token_accumulator.total.total_tokens,
         "elapsed_seconds": round(elapsed, 2),
         "outcome": outcome,
         "did_edit": any(name in {"edit_file", "write_file"} for name in tool_names),

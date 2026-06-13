@@ -5,6 +5,7 @@ from codepilot.ui.repl import (
     expand_numbered_choice_reply,
     is_tool_result_error,
     resolve_tool_message,
+    token_display_for_tool_call,
     tool_result_status,
 )
 
@@ -195,3 +196,9 @@ def test_numeric_reply_is_unchanged_without_previous_choice_prompt():
     expanded = expand_numbered_choice_reply("2", [AIMessage(content="Hello!")])
 
     assert expanded == "2"
+
+
+def test_tool_call_token_display_counts_model_round_once():
+    displayed = [token_display_for_tool_call(42, index) for index in range(3)]
+
+    assert displayed == [42, 0, 0]

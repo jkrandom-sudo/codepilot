@@ -114,3 +114,15 @@ def test_render_task_summary_shows_input_and_output_tokens():
     assert "42" in output
     assert "输入 30" in output
     assert "输出 12" in output
+
+
+def test_render_model_usage_shows_final_response_tokens():
+    renderer, console = _renderer()
+
+    renderer.render_model_usage("最终回复", total_tokens=12, input_tokens=8, output_tokens=4)
+
+    output = console.export_text()
+    assert "最终回复" in output
+    assert "12 tokens" in output
+    assert "输入 8" in output
+    assert "输出 4" in output

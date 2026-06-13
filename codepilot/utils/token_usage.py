@@ -20,6 +20,25 @@ class TokenUsage:
         )
 
 
+class TokenUsageAccumulator:
+    """Accumulate token usage once per AI message when a stable message id exists."""
+
+    def __init__(self) -> None:
+        self._seen_message_ids: set[str] = set()
+        self.total = TokenUsage()
+
+    def add_message(self, msg: AIMessage) -> TokenUsage:
+        msg_id = getattr(msg, "id", None)
+        key = f"id:{msg_id}" if msg_id else f"object:{id(msg)}"
+        if key in self._seen_message_ids:
+            return TokenUsage()
+        self._seen_message_ids.add(key)
+
+        usage = extract_token_usage(msg)
+        self.total += usage
+        return usage
+
+
 def extract_token_usage(msg: AIMessage) -> TokenUsage:
     """Normalize token usage across LangChain provider metadata formats."""
     usage = getattr(msg, "usage_metadata", None)

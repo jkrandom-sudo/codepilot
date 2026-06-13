@@ -221,6 +221,21 @@ class Renderer:
             self.console.print("[bold red]✘ 任务未完成[/bold red]")
         self.console.print(table)
 
+    def render_model_usage(
+        self,
+        label: str,
+        total_tokens: int,
+        input_tokens: int = 0,
+        output_tokens: int = 0,
+    ) -> None:
+        """Show token usage for a model round that is not otherwise tied to one tool step."""
+        if not total_tokens:
+            return
+        details = ""
+        if input_tokens or output_tokens:
+            details = f" [dim](输入 {input_tokens:,} / 输出 {output_tokens:,})[/dim]"
+        self.console.print(f"  [dim]🧠 {label}: {total_tokens:,} tokens{details}[/dim]")
+
     def render_message(self, content: str) -> None:
         self.console.print(Markdown(content))
 

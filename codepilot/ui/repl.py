@@ -19,7 +19,7 @@ from codepilot.ui.commands import SLASH_COMMANDS, CommandHandler
 from codepilot.ui.intent import chat_response, classify_intent, classify_task, greeting_response
 from codepilot.ui.permissions import PermissionHandler, prompt_permission_choice
 from codepilot.ui.renderer import Renderer
-from codepilot.utils.token_usage import extract_token_usage
+from codepilot.utils.token_usage import TokenUsageAccumulator, extract_token_usage
 
 
 TOOL_ERROR_PREFIXES = (
@@ -115,6 +115,11 @@ def expand_numbered_choice_reply(user_input: str, messages: list[BaseMessage]) -
     )
 
 
+def token_display_for_tool_call(round_tokens: int, tool_call_index: int) -> int:
+    """Display model-round token usage on the first tool call only."""
+    return round_tokens if tool_call_index == 0 else 0
+
+
 class REPL:
     def __init__(
         self,
@@ -156,6 +161,7 @@ class REPL:
         self._task_tokens: int = 0
         self._task_input_tokens: int = 0
         self._task_output_tokens: int = 0
+        self._task_token_accumulator = TokenUsageAccumulator()
         self._task_tools: int = 0
         self._task_tool_names: list[str] = []
         self._task_denied_count: int = 0
@@ -331,6 +337,7 @@ class REPL:
             self._task_tokens = 0
             self._task_input_tokens = 0
             self._task_output_tokens = 0
+            self._task_token_accumulator = TokenUsageAccumulator()
             self._task_tools = 0
             self._task_tool_names.clear()
             self._task_denied_count = 0
@@ -554,18 +561,18 @@ class REPL:
                 for msg in node_state["messages"]:
                     if isinstance(msg, AIMessage):
                         self._update_activity(activity, "模型已返回下一步，正在处理...")
-                        usage = extract_token_usage(msg)
+                        usage = self._task_token_accumulator.add_message(msg)
                         tokens_used = usage.total_tokens
-                        self._task_tokens += usage.total_tokens
-                        self._task_input_tokens += usage.input_tokens
-                        self._task_output_tokens += usage.output_tokens
+                        self._task_tokens = self._task_token_accumulator.total.total_tokens
+                        self._task_input_tokens = self._task_token_accumulator.total.input_tokens
+                        self._task_output_tokens = self._task_token_accumulator.total.output_tokens
 
                         if msg.tool_calls:
                             self._task_iteration_count += 1
                             tool_start = time.time()
                             if not self._task_first_tool_at:
                                 self._task_first_tool_at = tool_start
-                            for tc in msg.tool_calls:
+                            for tool_call_index, tc in enumerate(msg.tool_calls):
                                 step += 1
                                 tool_calls_by_id[tc["id"]] = {
                                     "name": tc["name"],
@@ -584,7 +591,7 @@ class REPL:
                                     tool_args,
                                     step=step,
                                     elapsed=0,
-                                    tokens=tokens_used,
+                                    tokens=token_display_for_tool_call(tokens_used, tool_call_index),
                                 )
                                 self._update_activity(activity, "等待工具执行结果...")
 
@@ -594,6 +601,12 @@ class REPL:
                                 current_phase = "summary"
                                 self.renderer.render_phase_header("总结与下一步")
                             self.renderer.render_message(msg.content)
+                            self.renderer.render_model_usage(
+                                "最终回复",
+                                total_tokens=usage.total_tokens,
+                                input_tokens=usage.input_tokens,
+                                output_tokens=usage.output_tokens,
+                            )
 
                         new_messages.append(msg)
 
