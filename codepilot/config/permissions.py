@@ -1,3 +1,8 @@
+"""Permission rules for tool execution.
+
+Defines PermissionRuleset with pattern-based allow/deny/ask rules
+for deterministic tool access control per agent type.
+"""
 from __future__ import annotations
 
 import fnmatch

@@ -1,3 +1,8 @@
+"""Diff formatting utilities.
+
+Formats unified diffs for display in the REPL
+and for the edit_file tool output.
+"""
 from __future__ import annotations
 
 import difflib

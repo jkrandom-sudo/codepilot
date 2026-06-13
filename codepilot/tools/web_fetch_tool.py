@@ -1,3 +1,8 @@
+"""Web page fetching tool.
+
+Fetches and converts web pages to markdown/text
+for the agent to read.
+"""
 from __future__ import annotations
 
 from langchain_core.tools import tool

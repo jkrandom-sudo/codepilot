@@ -1,3 +1,8 @@
+"""SQLite-based session storage for conversation persistence.
+
+Manages session CRUD, message history, and context restoration
+across agent invocations.
+"""
 from __future__ import annotations
 
 import json

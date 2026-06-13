@@ -1,3 +1,8 @@
+"""Skill manager for loading and listing built-in and user skills.
+
+Skills are reusable task templates that guide the agent
+on how to approach specific problem types.
+"""
 from __future__ import annotations
 
 import os

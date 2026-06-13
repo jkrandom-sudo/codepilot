@@ -1,3 +1,8 @@
+"""Truncation store for oversized tool results.
+
+Saves full tool output to disk when it exceeds
+budget limits, replacing it with a head/tail excerpt.
+"""
 from __future__ import annotations
 
 import time

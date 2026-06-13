@@ -1,3 +1,8 @@
+"""Shell execution tool with safety guards.
+
+Provides run_shell with permission checks,
+search command detection, and sandboxing.
+"""
 from __future__ import annotations
 
 import os

@@ -1,3 +1,8 @@
+"""Pydantic models for session storage.
+
+Defines StoredMessage and related data models
+used for serialization and deserialization.
+"""
 from __future__ import annotations
 
 from datetime import datetime

@@ -1,3 +1,8 @@
+"""File read/write/edit tools for the agent.
+
+Provides read_file, write_file, and edit_file implementations
+with path resolution and safety checks.
+"""
 from __future__ import annotations
 
 import os

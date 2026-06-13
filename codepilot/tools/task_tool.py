@@ -1,3 +1,8 @@
+"""Subagent delegation via task tool.
+
+Spawns subagent processes for parallel/independent
+coding tasks within the main agent session.
+"""
 from __future__ import annotations
 
 from typing import Any, Literal

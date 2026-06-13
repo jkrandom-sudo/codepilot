@@ -1,3 +1,8 @@
+"""Tab completion for the REPL.
+
+Provides file path and command name completion
+in the interactive prompt-toolkit session.
+"""
 from __future__ import annotations
 
 import os

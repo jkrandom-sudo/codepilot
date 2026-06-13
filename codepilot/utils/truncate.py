@@ -1,3 +1,9 @@
+"""Output truncation utilities for long tool results.
+
+Provides head/tail-and-ellipsis style truncation that preserves
+both the start (context/setup) and end (result/summary) of output
+while stripping the middle.
+"""
 from __future__ import annotations
 
 

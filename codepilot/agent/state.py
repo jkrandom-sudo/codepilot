@@ -1,3 +1,8 @@
+"""Typed agent state definition for LangGraph.
+
+Defines the AgentState TypedDict used across
+all graph nodes for message passing.
+"""
 from __future__ import annotations
 
 from typing import Annotated

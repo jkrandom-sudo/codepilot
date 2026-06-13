@@ -1,3 +1,8 @@
+"""Global application settings and config loading.
+
+Loads codepilot.yaml configuration with defaults,
+environment variable overrides, and project-level .codepilot.yaml support.
+"""
 from __future__ import annotations
 
 import os

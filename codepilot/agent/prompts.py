@@ -1,3 +1,8 @@
+"""System prompts and project context for the CodePilot agent.
+
+Builds the dynamic system prompt with iteration budgets,
+file contexts, and project structure awareness.
+"""
 from __future__ import annotations
 
 import os

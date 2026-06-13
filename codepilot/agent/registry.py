@@ -1,3 +1,8 @@
+"""Agent type registry and default definitions.
+
+Defines built-in agent types (build, plan) and their
+permissions, tool sets, and iteration limits.
+"""
 from __future__ import annotations
 
 from typing import Any, Literal

@@ -1,3 +1,8 @@
+"""Tool execution context and shared state.
+
+Carries session ID, working directory, seen patterns,
+and permission context across tool invocations.
+"""
 from __future__ import annotations
 
 import threading

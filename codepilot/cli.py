@@ -1,3 +1,8 @@
+"""CodePilot CLI entry point and non-interactive mode.
+
+Handles argument parsing, config loading, session resume,
+and both interactive (REPL) and non-interactive (-p flag) execution.
+"""
 import os
 import time
 from collections import Counter

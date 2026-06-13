@@ -1,3 +1,8 @@
+"""REPL slash commands handler.
+
+Handles /add, /model, /agent, /tokens, /help and other
+slash commands in the interactive REPL.
+"""
 from __future__ import annotations
 
 from typing import TYPE_CHECKING

@@ -1,3 +1,8 @@
+"""Skill loading and execution tool.
+
+Loads SKILL.md files from the skills directory
+and injects them into the agent context.
+"""
 from __future__ import annotations
 
 import os
