@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import os
 import time
 from pathlib import Path
 
 from codepilot.utils.truncate import truncate_output
 
-TRUNCATION_DIR = Path.home() / ".codepilot" / "truncations"
+TRUNCATION_DIR = Path(
+    os.environ.get("CODEPILOT_TRUNCATION_DIR", Path.home() / ".codepilot" / "truncations")
+)
 MAX_TRUNCATION_AGE_DAYS = 7
 
 
