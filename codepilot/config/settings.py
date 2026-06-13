@@ -18,7 +18,7 @@ class ProviderConfig(BaseModel):
     models: list[str] = Field(default_factory=list)
     provider_type: str = "openai_compatible"  # "anthropic" | "openai_compatible" | "google" | "bedrock"
     context_window: int | None = None  # Override context window size (tokens) for all models in this provider
-    max_tokens: int = 4096  # Max output tokens per response
+    max_tokens: int = 8192  # Max output tokens per response
 
 
 class DefaultConfig(BaseModel):

@@ -1,3 +1,3 @@
 """CodePilot - AI coding agent for the terminal."""
 
-__version__ = "0.1.4"
+__version__ = "0.1.5"

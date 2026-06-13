@@ -641,19 +641,19 @@ class TestResponseLengthLimit:
 
     def test_max_tokens_for_providers(self):
         from codepilot.config.providers import DEFAULT_MAX_TOKENS, MODEL_MAX_TOKENS
-        assert DEFAULT_MAX_TOKENS > 0
+        assert DEFAULT_MAX_TOKENS >= 8192
         for model_key, tokens in MODEL_MAX_TOKENS.items():
-            assert tokens > 0
-            assert tokens <= 16384
+            assert tokens >= 8192
+            assert tokens <= 32768
 
     def test_provider_max_tokens_method(self):
         from codepilot.config.providers import ProviderRegistry
         from codepilot.config.settings import AppSettings
         registry = ProviderRegistry(AppSettings())
-        assert registry._get_max_tokens("deepseek-chat") == 4096
-        assert registry._get_max_tokens("glm-5.1") == 4096
-        assert registry._get_max_tokens("unknown-model") == 4096
-        assert registry._get_max_tokens("claude-sonnet-4-20250514") == 8192
+        assert registry._get_max_tokens("deepseek-chat") == 8192
+        assert registry._get_max_tokens("glm-5.1") == 8192
+        assert registry._get_max_tokens("unknown-model") == 8192
+        assert registry._get_max_tokens("claude-sonnet-4-20250514") == 16384
 
 
 class TestRateLimitRetry:

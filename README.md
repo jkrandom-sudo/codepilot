@@ -16,8 +16,8 @@ codepilot
 # 非交互模式
 codepilot -p "列出当前目录文件"
 
-# Plan-and-Execute 工作流
-codepilot --agent plan-execute -p "为当前项目添加一个小功能并验证"
+# 默认自动路由：简单任务走 ReAct，复杂任务自动走 Plan-and-Execute
+codepilot -p "为当前项目添加一个小功能并验证"
 
 # 写操作无需确认
 codepilot --no-confirm -p "运行测试并修复失败"
@@ -86,7 +86,7 @@ pipx inject codepilot "mcp>=1.0.0"
 | 参数 | 缩写 | 说明 |
 |------|------|------|
 | `--model` | `-m` | 模型规格，格式 `provider/model`，如 `arc/glm-5.1` |
-| `--agent` | `-a` | Agent 类型：`build`、`plan`、`plan-execute` |
+| `--agent` | `-a` | Agent 类型：`auto`、`build`、`plan`、`plan-execute`；默认 `auto` |
 | `--confirm/--no-confirm` | | 写操作是否需要确认；`--no-confirm` 等价于自动执行允许的写操作 |
 | `--prompt` | `-p` | 非交互模式，执行后退出 |
 | `--resume` | `-r` | 恢复指定 ID 的会话 |
@@ -141,7 +141,7 @@ API Key 也可通过环境变量覆盖：
 
 ## Agent 和工作流
 
-CodePilot 以 Agent 为行为中心。权限、提示词、工具集合和执行工作流都由 Agent 定义。
+CodePilot 以 Agent 为行为中心。默认 `auto` 会根据任务复杂度选择执行工作流：简单搜索、单点修复走 ReAct；复杂的评估、优化、多文件实现、测试闭环走 Plan-and-Execute。用户也可以用 `--agent` 或 `/agent` 显式指定。
 
 | Agent | 类型 | 工作流 | 说明 | 权限 |
 |-------|------|--------|------|------|
@@ -152,6 +152,8 @@ CodePilot 以 Agent 为行为中心。权限、提示词、工具集合和执行
 | `general` | Subagent | ReAct | 由 `task` 工具派生，负责多步骤执行 | 继承父 Agent 限制 |
 
 `plan-execute` 会在任务开始时先调用一次 planner 节点，生成 3-7 步计划，然后把该计划作为上下文交给正常工具循环执行。它适合改动面较大、需要先拆解再落地的开发任务。
+
+复杂任务拆分后的子任务仍使用 ReAct：子 Agent 会围绕单个子目标执行“观察 → 行动 → 结果回传”，避免每个小步骤都重复规划。
 
 ## Skills
 

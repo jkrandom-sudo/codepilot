@@ -7,6 +7,7 @@ from codepilot.ui.intent import (
     greeting_response,
     is_greeting,
 )
+from codepilot.agent.router import select_agent_for_task
 
 
 @pytest.mark.parametrize("text", [
@@ -80,6 +81,27 @@ def test_readonly_search_request_is_code_search_even_if_it_mentions_edit():
 def test_find_and_fix_request_stays_file_edit():
     text = "find the checkout bug and fix it"
     assert classify_task(text) == "file_edit"
+
+
+def test_simple_search_uses_react_build_agent():
+    text = "find where API tokens are validated"
+    task_type = classify_task(text)
+
+    assert select_agent_for_task(text, task_type, requested_agent="auto") == "build"
+
+
+def test_complex_implementation_routes_to_plan_execute():
+    text = "评估当前项目效果，给出优化方案，根据方案进行优化，运行测试并提交"
+    task_type = classify_task(text)
+
+    assert select_agent_for_task(text, task_type, requested_agent="auto") == "plan-execute"
+
+
+def test_readonly_analysis_routes_to_plan_agent():
+    text = "分析当前项目结构并给出方案，不要修改文件"
+    task_type = classify_task(text)
+
+    assert select_agent_for_task(text, task_type, requested_agent="auto") == "plan"
 
 
 def test_greeting_response_matches_user_language():

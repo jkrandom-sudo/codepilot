@@ -45,10 +45,10 @@ def main(model: str | None, agent: str | None, confirm: bool, prompt: str | None
 
     if agent:
         resolved_agent = agent
-    elif not confirm:
-        resolved_agent = "build"
+    elif config.agent and config.agent not in {"build", "auto"}:
+        resolved_agent = config.agent
     else:
-        resolved_agent = "build"
+        resolved_agent = "auto"
 
     if prompt:
         _run_non_interactive(registry, resolved_model, resolved_agent, confirm, prompt)
@@ -74,6 +74,10 @@ def _get_latest_session_id() -> str | None:
 
 def _resolve_effective_agent(agent_name: str, confirm: bool) -> tuple[str, bool]:
     from codepilot.agent.registry import AgentRegistry
+    from codepilot.agent.router import AUTO_AGENT
+    if agent_name == AUTO_AGENT:
+        return AUTO_AGENT, confirm
+
     registry = AgentRegistry()
     agent_def = registry.get(agent_name)
 
@@ -130,6 +134,8 @@ def _run_interactive(registry, model: str, agent_name: str = "build", confirm: b
 
 def _run_non_interactive(registry, model: str, agent_name: str, confirm: bool, prompt: str) -> None:
     from codepilot.agent.graph import build_agent_graph, graph_recursion_limit
+    from codepilot.agent.registry import AgentRegistry
+    from codepilot.agent.router import select_agent_for_task
     from codepilot.config.permissions import PermissionRuleset
     from codepilot.storage.db import new_session_id
     from codepilot.ui.intent import chat_response, classify_intent, classify_task, greeting_response
@@ -144,22 +150,27 @@ def _run_non_interactive(registry, model: str, agent_name: str, confirm: bool, p
         return
 
     effective_agent, _ = _resolve_effective_agent(agent_name, confirm)
-    custom_permissions = PermissionRuleset.auto_ruleset()
     session_id = new_session_id()
     task_type = classify_task(prompt)
+    selected_agent = select_agent_for_task(prompt, task_type, effective_agent)
+    agent_def = AgentRegistry().get_or_default(selected_agent)
+    custom_permissions = (
+        agent_def.permissions if agent_def.is_readonly else PermissionRuleset.auto_ruleset()
+    )
 
     try:
         llm = registry.get_llm(model)
         graph = build_agent_graph(
             llm,
-            agent_name=effective_agent,
+            agent_name=selected_agent,
             custom_permissions=custom_permissions,
         )
     except Exception as e:
         raise click.ClickException(_format_non_interactive_error(e)) from None
 
     click.echo(f"🚀 开始执行任务：{prompt[:120]}", err=True)
-    click.echo(f"模型：{model} | Agent：{effective_agent} | 模式：auto", err=True)
+    route_suffix = f" (auto→{selected_agent})" if effective_agent == "auto" else ""
+    click.echo(f"模型：{model} | Agent：{selected_agent}{route_suffix} | 模式：auto", err=True)
     click.echo("⏳ Agent 正在分析和执行，请稍候...", err=True)
     task_start = time.time()
     graph_input = {
@@ -167,7 +178,7 @@ def _run_non_interactive(registry, model: str, agent_name: str, confirm: bool, p
         "working_dir": os.getcwd(),
         "files_context": [],
         "task_type": task_type,
-        "agent_name": effective_agent,
+        "agent_name": selected_agent,
         "session_id": session_id,
     }
     graph_config = {
@@ -176,14 +187,16 @@ def _run_non_interactive(registry, model: str, agent_name: str, confirm: bool, p
         "metadata": {
             "model": model,
             "session_id": session_id,
-            "agent_name": effective_agent,
+            "agent_name": selected_agent,
+            "requested_agent": effective_agent,
             "confirm": "auto",
             "task_type": task_type,
             "non_interactive": True,
             "user_input_preview": prompt[:200],
         },
         "tags": [
-            f"agent:{effective_agent}",
+            f"agent:{selected_agent}",
+            f"requested_agent:{effective_agent}",
             "confirm:auto",
             f"model:{model}",
             f"task_type:{task_type}",
@@ -200,7 +213,7 @@ def _run_non_interactive(registry, model: str, agent_name: str, confirm: bool, p
         task_start=task_start,
         messages=result.get("messages", []),
         model=model,
-        agent_name=effective_agent,
+        agent_name=selected_agent,
         task_type=task_type,
     )
 

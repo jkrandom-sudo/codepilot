@@ -413,11 +413,12 @@ class AgentRegistry:
 
 | Agent | agent_mode | workflow | steps | confirm | tools | 权限 |
 |-------|------------|----------|-------|---------|-------|------|
-| build | primary | react | 25 | True | all | build 规则集 |
-| plan | primary | react | 10 | False | all (权限运行时阻止写) | plan 规则集 |
-| plan-execute | primary | plan_execute | 25 | True | all | build 规则集 |
-| explore | subagent | react | 10 | False | 只读工具 + skill/MCP 只读入口 | explore 规则集 |
-| general | subagent | react | 20 | False | all | general 规则集 |
+| auto | pseudo | auto | - | True | - | 按任务复杂度选择 build / plan / plan-execute |
+| build | primary | react | 40 | True | all | build 规则集 |
+| plan | primary | react | 16 | False | all (权限运行时阻止写) | plan 规则集 |
+| plan-execute | primary | plan_execute | 45 | True | all | build 规则集 |
+| explore | subagent | react | 16 | False | 只读工具 + skill/MCP 只读入口 | explore 规则集 |
+| general | subagent | react | 32 | False | all | general 规则集 |
 
 #### 3.3.3 Agent 上下文管理 (`codepilot/agent/context_manager.py`)
 
@@ -493,17 +494,18 @@ class AgentRegistry:
 
 `build_agent_graph(llm, agent_name, context_window, custom_permissions, custom_tools, storage, ask_permission_callback)` 函数：
 
-1. 从 AgentRegistry 获取 AgentDef
-2. 根据 agent_name 和 custom_tools 确定工具列表
-3. 根据 agent_name 选择系统提示（build/plan/explore/general 各有专有提示；plan-execute 复用 build 执行提示并额外启用 planner）
-4. 构建三层压缩阈值（compact=80%, overflow=95%）
-5. 构建 `StateGraph(AgentState)`：
+1. 入口层通过 `agent/router.py` 在 `auto` 下选择实际 Agent：简单任务 → `build`，只读分析 → `plan`，复杂多步骤任务 → `plan-execute`
+2. 从 AgentRegistry 获取 AgentDef
+3. 根据 agent_name 和 custom_tools 确定工具列表
+4. 根据 agent_name 选择系统提示（build/plan/explore/general 各有专有提示；plan-execute 复用 build 执行提示并额外启用 planner）
+5. 构建三层压缩阈值（compact=80%, overflow=95%）
+6. 构建 `StateGraph(AgentState)`：
    - `planner` 节点：仅 `workflow="plan_execute"` 时启用，先生成 `[Plan-and-Execute Plan]`，不绑定工具、不执行写操作
    - `agent` 节点：三层压缩 → 截断+磁盘溢出 → 注入真实任务预算 → 验证配对 → 注入上下文 → 调用 LLM → 响应截断
    - `tools` 节点：权限规则集检查 → read_file/glob/grep 去重 → run_shell 搜索拦截 → 执行工具 → 追踪 files_context → 自适应截断+磁盘溢出
    - `summarize` 节点：任务类型预算/硬上限超限时生成总结后终止
-6. 当工作流为 `plan_execute` 时添加 `START → planner → agent`，否则添加 `START → agent`
-7. 编译并返回可执行的 `CompiledGraph`
+7. 当工作流为 `plan_execute` 时添加 `START → planner → agent`，否则添加 `START → agent`
+8. 编译并返回可执行的 `CompiledGraph`
 
 #### 3.3.8 System Prompt (`codepilot/agent/prompts.py`)
 

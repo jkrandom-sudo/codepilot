@@ -10,7 +10,7 @@ if TYPE_CHECKING:
 
 SLASH_COMMANDS = {
     "/model": "查看或切换模型",
-    "/agent": "切换或查看 Agent (build/plan/plan-execute)",
+    "/agent": "切换或查看 Agent (auto/build/plan/plan-execute)",
     "/context": "查看上下文使用情况",
     "/compact": "压缩对话历史",
     "/clear": "清除对话历史",
@@ -213,6 +213,8 @@ class CommandHandler:
 
         if not arg:
             self.repl.console.print(f"当前 Agent: {self.repl.agent_name} ({self.repl._confirm_label})")
+            auto_marker = " ←" if self.repl.agent_name == "auto" else ""
+            self.repl.console.print(f"  {'auto':10s} Auto Router [auto]{auto_marker}")
             self.repl.console.print("\n可用 Primary Agents:")
             for a in registry.list_primary():
                 confirm_str = "confirm" if a.confirm else ("readonly" if a.is_readonly else "auto")
@@ -222,6 +224,17 @@ class CommandHandler:
             for a in registry.list_subagents():
                 self.repl.console.print(f"  {a.name:10s} {a.display_name}")
             self.repl.console.print("\n用法: /agent <name>")
+            return False
+
+        if arg == "auto":
+            old_agent = self.repl.agent_name
+            self.repl.agent_name = "auto"
+            self.repl._agent_def = registry.get_or_default("build")
+            self.repl.permission.set_ruleset(self.repl._agent_def.permissions)
+            self.repl._get_or_build_graph()
+            self.repl.console.print("[green]Agent: %s → auto (Auto Router, confirm)[/green]" % old_agent)
+            if self.repl.storage and self.repl._session_id:
+                self.repl.storage.update_session(self.repl._session_id, agent="auto", mode=self.repl._confirm_label)
             return False
 
         agent_def = registry.get(arg)

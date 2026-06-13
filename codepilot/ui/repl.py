@@ -167,6 +167,7 @@ class REPL:
         self._task_permission_wait_count: int = 0
         self._task_first_tool_at: float = 0
         self._task_first_visible_at: float = 0
+        self._task_effective_agent: str = agent_name
         self._active_activity = None
         self._activity_paused_for_prompt = False
 
@@ -420,9 +421,10 @@ class REPL:
         from codepilot.agent.graph import build_agent_graph
 
         cw = context_window if context_window is not None else self._context_window
+        graph_agent_name = getattr(self, "_task_effective_agent", self.agent_name)
         cache_key = (
             id(self.llm),
-            self.agent_name,
+            graph_agent_name,
             cw,
             id(self.permission.ruleset),
         )
@@ -430,7 +432,7 @@ class REPL:
             return self.graph
         self.graph = build_agent_graph(
             self.llm,
-            agent_name=self.agent_name,
+            agent_name=graph_agent_name,
             context_window=cw,
             ask_permission_callback=self.permission.check_permission,
             storage=self.storage,
@@ -471,11 +473,23 @@ class REPL:
 
     def _run_agent(self) -> None:
         from codepilot.agent.graph import graph_recursion_limit
+        from codepilot.agent.registry import AgentRegistry
+        from codepilot.agent.router import select_agent_for_task
+
+        task_type = classify_task(self._task_user_input)
+        effective_agent = select_agent_for_task(self._task_user_input, task_type, self.agent_name)
+        self._task_effective_agent = effective_agent
+        effective_def = AgentRegistry().get_or_default(effective_agent)
+        route_label = (
+            f"{effective_agent} (auto)"
+            if self.agent_name == "auto" and effective_agent != self.agent_name
+            else effective_agent
+        )
 
         self.renderer.render_task_start(
             self._task_user_input,
             model=self.model,
-            agent_name=self.agent_name,
+            agent_name=route_label,
             mode=self._confirm_label,
         )
         self.renderer.render_waiting()
@@ -486,8 +500,6 @@ class REPL:
         new_messages: list[BaseMessage] = []
         tool_calls_by_id: dict[str, dict] = {}
         tool_start: float = 0
-
-        task_type = classify_task(self._task_user_input)
 
         callbacks = []
         if self._trace_enabled:
@@ -511,7 +523,7 @@ class REPL:
                 "working_dir": os.getcwd(),
                 "files_context": list(self._files_context),
                 "task_type": task_type,
-                "agent_name": self.agent_name,
+                "agent_name": effective_agent,
                 "session_id": self._session_id or "",
             },
             config={
@@ -521,13 +533,17 @@ class REPL:
                 "metadata": {
                     "model": self.model,
                     "session_id": self._session_id or "",
-                    "agent_name": self.agent_name,
+                    "agent_name": effective_agent,
+                    "requested_agent": self.agent_name,
+                    "workflow": effective_def.workflow,
                     "confirm": self._confirm_label,
                     "task_type": task_type,
                     "user_input_preview": self._task_user_input[:200],
                 },
                 "tags": [
-                    f"agent:{self.agent_name}",
+                    f"agent:{effective_agent}",
+                    f"requested_agent:{self.agent_name}",
+                    f"workflow:{effective_def.workflow}",
                     f"confirm:{self._confirm_label}",
                     f"model:{self.model}",
                     f"task_type:{task_type}",

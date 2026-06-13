@@ -22,6 +22,11 @@ class SlowGraph:
         return {"messages": [AIMessage(content="done")]}
 
 
+class FakeRegistry:
+    def get_llm(self, _model: str):
+        return object()
+
+
 def test_non_interactive_output_returns_only_final_ai_message():
     messages = [
         HumanMessage(content="fix the bug"),
@@ -68,6 +73,29 @@ def test_non_interactive_identity_short_circuits_before_llm(capsys):
     out = capsys.readouterr().out
     assert "CodePilot" in out
     assert "AI 编程助手" in out
+
+
+def test_non_interactive_auto_routes_complex_task_to_plan_execute(monkeypatch, capsys):
+    captured = {}
+
+    def fake_build_agent_graph(_llm, agent_name: str, **_kwargs):
+        captured["agent_name"] = agent_name
+        return SlowGraph()
+
+    monkeypatch.setattr("codepilot.agent.graph.build_agent_graph", fake_build_agent_graph)
+
+    _run_non_interactive(
+        FakeRegistry(),
+        "test/model",
+        "auto",
+        True,
+        "评估当前项目效果，给出优化方案，根据方案进行优化，运行测试并提交",
+    )
+
+    captured_io = capsys.readouterr()
+    assert captured["agent_name"] == "plan-execute"
+    assert "auto→plan-execute" in captured_io.err
+    assert "done" in captured_io.out
 
 
 def test_invoke_graph_with_heartbeat_emits_progress(capsys):
