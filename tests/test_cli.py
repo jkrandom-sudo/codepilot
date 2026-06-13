@@ -140,3 +140,28 @@ def test_non_interactive_task_metrics_counts_tools_and_tests():
     assert metrics["tests_passed"] is True
     assert metrics["outcome"] == "success"
     assert metrics["total_tokens"] == 12
+
+
+def test_non_interactive_task_metrics_counts_input_and_output_tokens():
+    messages = [
+        AIMessage(
+            content="step",
+            usage_metadata={"input_tokens": 10, "output_tokens": 5, "total_tokens": 15},
+        ),
+        AIMessage(
+            content="done",
+            response_metadata={
+                "token_usage": {
+                    "prompt_tokens": 20,
+                    "completion_tokens": 7,
+                    "total_tokens": 27,
+                }
+            },
+        ),
+    ]
+
+    metrics = _non_interactive_task_metrics(messages, elapsed=1.0)
+
+    assert metrics["input_tokens"] == 30
+    assert metrics["output_tokens"] == 12
+    assert metrics["total_tokens"] == 42

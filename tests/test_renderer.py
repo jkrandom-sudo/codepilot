@@ -96,3 +96,21 @@ def test_render_task_summary_marks_partial():
     assert "部分完成" in output
     assert "12.3s" in output
     assert "4,567" in output
+
+
+def test_render_task_summary_shows_input_and_output_tokens():
+    renderer, console = _renderer()
+
+    renderer.render_task_summary(
+        3.2,
+        total_tokens=42,
+        tool_count=1,
+        input_tokens=30,
+        output_tokens=12,
+    )
+
+    output = console.export_text()
+    assert "Token 消耗:" in output
+    assert "42" in output
+    assert "输入 30" in output
+    assert "输出 12" in output

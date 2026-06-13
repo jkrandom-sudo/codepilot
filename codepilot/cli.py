@@ -7,6 +7,7 @@ import click
 from langchain_core.messages import AIMessage, ToolMessage
 
 from codepilot import __version__
+from codepilot.utils.token_usage import TokenUsage, extract_token_usage
 
 
 NON_INTERACTIVE_HEARTBEAT_INTERVAL = 15.0
@@ -263,14 +264,14 @@ def _short_error(detail: str, limit: int = 300) -> str:
 
 def _non_interactive_task_metrics(messages: list, elapsed: float) -> dict:
     tool_names: list[str] = []
-    total_tokens = 0
+    token_usage = TokenUsage()
     iteration_count = 0
     did_test = False
     tests_passed: bool | None = None
 
     for msg in messages:
         if isinstance(msg, AIMessage):
-            total_tokens += _message_tokens(msg)
+            token_usage += extract_token_usage(msg)
             tool_calls = getattr(msg, "tool_calls", None) or []
             if tool_calls:
                 iteration_count += 1
@@ -299,7 +300,9 @@ def _non_interactive_task_metrics(messages: list, elapsed: float) -> dict:
         "iteration_count": iteration_count,
         "tool_call_count": len(tool_names),
         "tool_distribution": dict(Counter(tool_names)),
-        "total_tokens": total_tokens,
+        "input_tokens": token_usage.input_tokens,
+        "output_tokens": token_usage.output_tokens,
+        "total_tokens": token_usage.total_tokens,
         "elapsed_seconds": round(elapsed, 2),
         "outcome": outcome,
         "did_edit": any(name in {"edit_file", "write_file"} for name in tool_names),
@@ -307,18 +310,6 @@ def _non_interactive_task_metrics(messages: list, elapsed: float) -> dict:
         "tests_passed": tests_passed,
         "non_interactive": True,
     }
-
-
-def _message_tokens(msg: AIMessage) -> int:
-    usage = getattr(msg, "usage_metadata", None)
-    if usage:
-        if isinstance(usage, dict):
-            return int(usage.get("total_tokens", 0) or 0)
-        return int(getattr(usage, "total_tokens", 0) or 0)
-    metadata = getattr(msg, "response_metadata", None) or {}
-    token_usage = metadata.get("token_usage", {}) or metadata.get("usage", {})
-    return int(token_usage.get("total_tokens", 0) or 0)
-
 
 def _report_non_interactive_to_langsmith(
     *,
@@ -360,6 +351,7 @@ def _report_non_interactive_to_langsmith(
         metric_comment = (
             f"outcome={metrics['outcome']}, iterations={metrics['iteration_count']}, "
             f"tools={metrics['tool_call_count']}, tokens={metrics['total_tokens']}, "
+            f"input_tokens={metrics['input_tokens']}, output_tokens={metrics['output_tokens']}, "
             f"elapsed={metrics['elapsed_seconds']:.1f}s, model={model}, "
             f"agent={agent_name}, task_type={task_type}"
         )

@@ -194,13 +194,21 @@ class Renderer:
         tool_count: int,
         step_count: int = 0,
         outcome: str = "success",
+        input_tokens: int = 0,
+        output_tokens: int = 0,
     ) -> None:
         """Show task completion summary."""
         table = Table(show_header=False, box=None, padding=(0, 2))
         table.add_column(style="dim", justify="right")
         table.add_column(style="bold")
         table.add_row("执行时间:", f"{total_time:.1f}s")
-        table.add_row("Token 消耗:", f"{total_tokens:,}")
+        if input_tokens or output_tokens:
+            table.add_row(
+                "Token 消耗:",
+                f"{total_tokens:,} [dim](输入 {input_tokens:,} / 输出 {output_tokens:,})[/dim]",
+            )
+        else:
+            table.add_row("Token 消耗:", f"{total_tokens:,}")
         table.add_row("工具调用:", f"{tool_count} 次")
         if step_count > 0:
             table.add_row("执行步骤:", f"{step_count} 步")

@@ -19,6 +19,7 @@ from codepilot.ui.commands import SLASH_COMMANDS, CommandHandler
 from codepilot.ui.intent import chat_response, classify_intent, classify_task, greeting_response
 from codepilot.ui.permissions import PermissionHandler, prompt_permission_choice
 from codepilot.ui.renderer import Renderer
+from codepilot.utils.token_usage import extract_token_usage
 
 
 TOOL_ERROR_PREFIXES = (
@@ -153,6 +154,8 @@ class REPL:
             self._context_window = get_usable_context(clean_name, suffix_ctx)
 
         self._task_tokens: int = 0
+        self._task_input_tokens: int = 0
+        self._task_output_tokens: int = 0
         self._task_tools: int = 0
         self._task_tool_names: list[str] = []
         self._task_denied_count: int = 0
@@ -326,6 +329,8 @@ class REPL:
 
             self._task_start = time.time()
             self._task_tokens = 0
+            self._task_input_tokens = 0
+            self._task_output_tokens = 0
             self._task_tools = 0
             self._task_tool_names.clear()
             self._task_denied_count = 0
@@ -368,6 +373,8 @@ class REPL:
                     self._task_tools,
                     self._task_steps,
                     outcome=outcome,
+                    input_tokens=self._task_input_tokens,
+                    output_tokens=self._task_output_tokens,
                 )
 
             if self._context_tokens > 0:
@@ -386,18 +393,7 @@ class REPL:
         ))
 
     def _extract_tokens(self, msg: AIMessage) -> int:
-        tokens = 0
-        usage = getattr(msg, "usage_metadata", None)
-        if usage:
-            tokens = getattr(usage, "total_tokens", 0) or 0
-            if not tokens:
-                tokens = usage.get("total_tokens", 0) or 0
-        if not tokens:
-            resp_meta = getattr(msg, "response_metadata", None)
-            if resp_meta:
-                token_usage = resp_meta.get("token_usage", {}) or resp_meta.get("usage", {})
-                tokens = token_usage.get("total_tokens", 0) or 0
-        return tokens
+        return extract_token_usage(msg).total_tokens
 
     def _estimate_context_tokens(self) -> int:
         total_chars = 0
@@ -558,8 +554,11 @@ class REPL:
                 for msg in node_state["messages"]:
                     if isinstance(msg, AIMessage):
                         self._update_activity(activity, "模型已返回下一步，正在处理...")
-                        tokens_used = self._extract_tokens(msg)
-                        self._task_tokens += tokens_used
+                        usage = extract_token_usage(msg)
+                        tokens_used = usage.total_tokens
+                        self._task_tokens += usage.total_tokens
+                        self._task_input_tokens += usage.input_tokens
+                        self._task_output_tokens += usage.output_tokens
 
                         if msg.tool_calls:
                             self._task_iteration_count += 1
@@ -944,6 +943,8 @@ class REPL:
                     score=1.0 if outcome == "success" else (0.5 if outcome in ("partial", "aborted") else 0.0),
                     comment=f"outcome={outcome}, iterations={self._task_iteration_count}, "
                             f"tools={self._task_tools}, tokens={self._task_tokens}, "
+                            f"input_tokens={self._task_input_tokens}, "
+                            f"output_tokens={self._task_output_tokens}, "
                             f"elapsed={elapsed:.1f}s",
                 )
                 client.update_run(
@@ -954,6 +955,8 @@ class REPL:
                             "tool_call_count": self._task_tools,
                             "tool_distribution": tool_dist,
                             "denied_count": self._task_denied_count,
+                            "input_tokens": self._task_input_tokens,
+                            "output_tokens": self._task_output_tokens,
                             "total_tokens": self._task_tokens,
                             "elapsed_seconds": round(elapsed, 2),
                             "outcome": outcome,
