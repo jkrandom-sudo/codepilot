@@ -89,7 +89,7 @@ def test_permission_prompt_pauses_activity_while_waiting_for_input(monkeypatch):
     repl.renderer = FakePermissionRenderer()
     repl.console = FakeConsole()
     repl.permission = type("Permission", (), {"allowed_tools": set()})()
-    monkeypatch.setattr("builtins.input", lambda _prompt: "1")
+    monkeypatch.setattr("codepilot.ui.repl.prompt_permission_choice", lambda: "allow")
 
     allowed = repl._ask_permission("build", "run_shell", {"command": "pytest"})
 
@@ -97,6 +97,33 @@ def test_permission_prompt_pauses_activity_while_waiting_for_input(monkeypatch):
     assert repl.renderer.events[0] == ("stop", "activity")
     assert repl.renderer.events[1][0] == "choice"
     assert repl.renderer.events[-1][0] == "resume"
+
+
+def test_permission_prompt_supports_arrow_menu_always_choice(monkeypatch):
+    repl = REPL.__new__(REPL)
+    repl._task_permission_wait_count = 0
+    repl._active_activity = None
+    repl._activity_paused_for_prompt = False
+    repl.renderer = FakePermissionRenderer()
+    repl.console = FakeConsole()
+    repl.permission = type("Permission", (), {"allowed_tools": set()})()
+    monkeypatch.setattr("codepilot.ui.repl.prompt_permission_choice", lambda: "always")
+
+    allowed = repl._ask_permission("build", "run_shell", {"command": "pytest"})
+
+    assert allowed is True
+    assert "run_shell" in repl.permission.allowed_tools
+    assert repl.renderer.events[-1] == ("result", "run_shell", True, True)
+
+
+def test_permission_choice_falls_back_to_numeric_input(monkeypatch):
+    from codepilot.ui.permissions import prompt_permission_choice
+
+    monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+    monkeypatch.setattr("sys.stdout.isatty", lambda: False)
+    monkeypatch.setattr("builtins.input", lambda _prompt: "2")
+
+    assert prompt_permission_choice() == "deny"
 
 
 def test_numeric_reply_expands_when_previous_ai_asked_numbered_choice():

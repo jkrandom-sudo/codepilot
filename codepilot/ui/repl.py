@@ -17,7 +17,7 @@ from codepilot.context.selector import parse_references
 from codepilot.ui.completer import AtFileCompleter, FileIndex
 from codepilot.ui.commands import SLASH_COMMANDS, CommandHandler
 from codepilot.ui.intent import chat_response, classify_intent, classify_task, greeting_response
-from codepilot.ui.permissions import PermissionHandler
+from codepilot.ui.permissions import PermissionHandler, prompt_permission_choice
 from codepilot.ui.renderer import Renderer
 
 
@@ -444,19 +444,16 @@ class REPL:
         try:
             self.renderer.render_choice(tool_name, tool_args)
 
-            while True:
-                response = input("  请选择 [1/2/3]: ").strip()
-                if response == "1":
-                    self.renderer.render_permission_result(tool_name, allowed=True)
-                    return True
-                if response == "2":
-                    self.renderer.render_permission_result(tool_name, allowed=False)
-                    return False
-                if response == "3":
-                    self.permission.allowed_tools.add(tool_name)
-                    self.renderer.render_permission_result(tool_name, allowed=True, always=True)
-                    return True
-                self.console.print("  输入 1(允许) / 2(拒绝) / 3(始终允许)")
+            choice = prompt_permission_choice()
+            if choice == "allow":
+                self.renderer.render_permission_result(tool_name, allowed=True)
+                return True
+            if choice == "always":
+                self.permission.allowed_tools.add(tool_name)
+                self.renderer.render_permission_result(tool_name, allowed=True, always=True)
+                return True
+            self.renderer.render_permission_result(tool_name, allowed=False)
+            return False
         finally:
             self._resume_activity_after_prompt()
 

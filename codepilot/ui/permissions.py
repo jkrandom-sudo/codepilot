@@ -1,8 +1,49 @@
 from __future__ import annotations
 
+import sys
 from typing import Callable, Optional
 
 from codepilot.config.permissions import PermissionRuleset
+
+
+PermissionChoice = str
+
+PERMISSION_CHOICES: list[tuple[PermissionChoice, str]] = [
+    ("allow", "允许执行"),
+    ("deny", "拒绝执行"),
+    ("always", "始终允许"),
+]
+
+
+def prompt_permission_choice() -> PermissionChoice:
+    """Prompt for a permission choice with arrows, falling back to numeric input."""
+    if sys.stdin.isatty() and sys.stdout.isatty():
+        try:
+            from prompt_toolkit.shortcuts import radiolist_dialog
+
+            result = radiolist_dialog(
+                title="等待确认",
+                text="使用上下方向键选择，按回车确认。",
+                values=PERMISSION_CHOICES,
+                default="allow",
+            ).run()
+            if result in {"allow", "deny", "always"}:
+                return result
+            return "deny"
+        except (EOFError, KeyboardInterrupt):
+            return "deny"
+        except Exception:
+            pass
+
+    while True:
+        response = input("  请选择 [1/2/3]: ").strip()
+        if response == "1":
+            return "allow"
+        if response == "2":
+            return "deny"
+        if response == "3":
+            return "always"
+        print("  输入 1(允许) / 2(拒绝) / 3(始终允许)")
 
 
 class PermissionHandler:
@@ -52,16 +93,13 @@ class PermissionHandler:
         renderer = Renderer()
         renderer.render_choice(tool_name, tool_args)
 
-        while True:
-            response = input("  请选择 [1/2/3]: ").strip()
-            if response == "1":
-                return True
-            if response == "2":
-                return False
-            if response == "3":
-                self.allowed_tools.add(tool_name)
-                return True
-            print("  输入 1(允许) / 2(拒绝) / 3(始终允许)")
+        choice = prompt_permission_choice()
+        if choice == "allow":
+            return True
+        if choice == "always":
+            self.allowed_tools.add(tool_name)
+            return True
+        return False
 
     def ruleset_name(self) -> str:
         return self.ruleset.__class__.__name__
