@@ -14,6 +14,15 @@ def test_pyproject_exposes_codepilot_console_script():
     assert data["project"]["scripts"]["codepilot"] == "codepilot.cli:main"
 
 
+def test_package_version_matches_runtime_version():
+    import codepilot
+
+    data = tomllib.loads((ROOT / "pyproject.toml").read_text())
+
+    assert data["project"]["version"] == "0.1.1"
+    assert codepilot.__version__ == data["project"]["version"]
+
+
 def test_hatch_build_includes_package_and_builtin_skills():
     data = tomllib.loads((ROOT / "pyproject.toml").read_text())
     wheel = data["tool"]["hatch"]["build"]["targets"]["wheel"]
