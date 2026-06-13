@@ -126,6 +126,36 @@ def test_permission_choice_falls_back_to_numeric_input(monkeypatch):
     assert prompt_permission_choice() == "deny"
 
 
+def test_permission_choice_uses_inline_prompt_session(monkeypatch):
+    import codepilot.ui.permissions as permissions
+
+    calls = []
+
+    class FakePromptSession:
+        def __init__(self):
+            calls.append(("init",))
+
+        def prompt(self, message, **kwargs):
+            calls.append(("prompt", message, kwargs))
+            return "3"
+
+    def forbidden_dialog(*_args, **_kwargs):
+        raise AssertionError("fullscreen dialog should not be used")
+
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+    monkeypatch.setattr("sys.stdout.isatty", lambda: True)
+    monkeypatch.setattr("prompt_toolkit.PromptSession", FakePromptSession)
+    monkeypatch.setattr("prompt_toolkit.shortcuts.radiolist_dialog", forbidden_dialog)
+
+    assert permissions.prompt_permission_choice() == "always"
+    assert calls[0] == ("init",)
+    _, message, kwargs = calls[1]
+    assert "请选择" in message
+    assert kwargs["multiline"] is False
+    assert kwargs["bottom_toolbar"] is not None
+    assert kwargs["reserve_space_for_menu"] == 0
+
+
 def test_numeric_reply_expands_when_previous_ai_asked_numbered_choice():
     previous = AIMessage(content=(
         "建议操作（任选）：\n\n"

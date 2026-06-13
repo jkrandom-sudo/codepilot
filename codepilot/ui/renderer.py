@@ -232,7 +232,7 @@ class Renderer:
         self.console.print(f"[dim]{info}[/dim]")
 
     def render_choice(self, tool_name: str, tool_args: dict) -> None:
-        """Show confirmation with prominent numbered choices."""
+        """Show confirmation context before the inline prompt takes focus."""
         intent = TOOL_INTENT.get(tool_name, tool_name)
         target = self._tool_target(tool_name, tool_args)
         desc = f"{intent} {target}" if target else intent
@@ -263,7 +263,12 @@ class Renderer:
             self.console.print(f"  [dim]命令:[/dim] [bold]{cmd}[/bold]")
 
         self.console.print("  " + "─" * 40)
-        self.console.print("  [bold green][1][/bold green] 允许执行  [bold red][2][/bold red] 拒绝执行  [bold blue][3][/bold blue] 始终允许")
+        self.console.print(
+            "  [bold green][1][/bold green] 允许执行  "
+            "[bold red][2][/bold red] 拒绝执行  "
+            "[bold blue][3][/bold blue] 始终允许  "
+            "[dim]↑/↓ 选择，Enter 确认，Esc 取消[/dim]"
+        )
         self.console.print()
 
     def render_permission_result(self, tool_name: str, allowed: bool, always: bool = False) -> None:

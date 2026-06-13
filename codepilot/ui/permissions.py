@@ -15,20 +15,98 @@ PERMISSION_CHOICES: list[tuple[PermissionChoice, str]] = [
 ]
 
 
+def _choice_from_text(text: str) -> PermissionChoice | None:
+    normalized = text.strip().lower()
+    return {
+        "1": "allow",
+        "allow": "allow",
+        "y": "allow",
+        "yes": "allow",
+        "2": "deny",
+        "deny": "deny",
+        "n": "deny",
+        "no": "deny",
+        "cancel": "deny",
+        "3": "always",
+        "always": "always",
+    }.get(normalized)
+
+
 def prompt_permission_choice() -> PermissionChoice:
-    """Prompt for a permission choice with arrows, falling back to numeric input."""
+    """Prompt for a permission choice inline, falling back to numeric input."""
     if sys.stdin.isatty() and sys.stdout.isatty():
         try:
-            from prompt_toolkit.shortcuts import radiolist_dialog
+            from prompt_toolkit import PromptSession
+            from prompt_toolkit.key_binding import KeyBindings
+            from prompt_toolkit.styles import Style
 
-            result = radiolist_dialog(
-                title="等待确认",
-                text="使用上下方向键选择，按回车确认。",
-                values=PERMISSION_CHOICES,
-                default="allow",
-            ).run()
-            if result in {"allow", "deny", "always"}:
-                return result
+            selected = {"index": 0}
+            kb = KeyBindings()
+
+            def move(delta: int) -> None:
+                selected["index"] = (selected["index"] + delta) % len(PERMISSION_CHOICES)
+
+            def finish(event, choice: PermissionChoice) -> None:
+                event.app.exit(result=choice)
+
+            @kb.add("up")
+            @kb.add("left")
+            def _(event) -> None:
+                move(-1)
+                event.app.invalidate()
+
+            @kb.add("down")
+            @kb.add("right")
+            def _(event) -> None:
+                move(1)
+                event.app.invalidate()
+
+            @kb.add("enter")
+            def _(event) -> None:
+                finish(event, PERMISSION_CHOICES[selected["index"]][0])
+
+            @kb.add("1")
+            def _(event) -> None:
+                finish(event, "allow")
+
+            @kb.add("2")
+            def _(event) -> None:
+                finish(event, "deny")
+
+            @kb.add("3")
+            def _(event) -> None:
+                finish(event, "always")
+
+            @kb.add("escape", eager=True)
+            @kb.add("c-c")
+            def _(event) -> None:
+                finish(event, "deny")
+
+            def toolbar():
+                rendered = []
+                for idx, (_, label) in enumerate(PERMISSION_CHOICES):
+                    prefix = "▶ " if idx == selected["index"] else "  "
+                    style = "permission.selected" if idx == selected["index"] else "permission.normal"
+                    rendered.append((style, f"{prefix}{idx + 1}. {label}  "))
+                rendered.append(("permission.hint", "  ↑/↓ 选择 · Enter 确认 · Esc 取消"))
+                return rendered
+
+            session = PromptSession()
+            result = session.prompt(
+                "  请选择: ",
+                key_bindings=kb,
+                bottom_toolbar=toolbar,
+                style=Style.from_dict({
+                    "permission.selected": "bold reverse",
+                    "permission.normal": "",
+                    "permission.hint": "ansigray",
+                }),
+                multiline=False,
+                reserve_space_for_menu=0,
+            )
+            choice = result if result in {"allow", "deny", "always"} else _choice_from_text(str(result))
+            if choice:
+                return choice
             return "deny"
         except (EOFError, KeyboardInterrupt):
             return "deny"
@@ -37,12 +115,9 @@ def prompt_permission_choice() -> PermissionChoice:
 
     while True:
         response = input("  请选择 [1/2/3]: ").strip()
-        if response == "1":
-            return "allow"
-        if response == "2":
-            return "deny"
-        if response == "3":
-            return "always"
+        choice = _choice_from_text(response)
+        if choice:
+            return choice
         print("  输入 1(允许) / 2(拒绝) / 3(始终允许)")
 
 

@@ -47,6 +47,18 @@ def test_render_waiting_shows_agent_running_hint():
     assert "结果会实时显示" in output
 
 
+def test_render_choice_shows_inline_keyboard_hints():
+    renderer, console = _renderer()
+
+    renderer.render_choice("run_shell", {"command": "pytest tests/test_repl.py -q"})
+
+    output = console.export_text()
+    assert "等待确认" in output
+    assert "↑/↓ 选择" in output
+    assert "Enter 确认" in output
+    assert "Esc 取消" in output
+
+
 def test_activity_helpers_format_running_hint():
     renderer, _ = _renderer()
 
