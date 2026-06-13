@@ -1,211 +1,141 @@
-# CodePilot - CLI 编程 Agent 设计文档
+# CodePilot 当前架构设计
 
-## Context
+本文档描述 CodePilot 当前架构，用于后续开发和评审。文档内容以当前代码实现为准。
 
-开发一个基于 Python + LangChain + LangGraph 的 CLI 编程 Agent 工具，核心定位为 AI 编程助手（类似 Claude Code / Aider / OpenCode），支持多平台 LLM Provider（OpenAI 兼容、Anthropic、Gemini、Bedrock 等），具备文件操作、Shell 执行、代码搜索、网页搜索等能力。
+## 目标
 
-项目名: **codepilot**
+CodePilot 是一个面向真实项目开发的 CLI Agent，目标是提供接近 Claude Code、OpenCode 的编程体验：
 
-## 架构: LangGraph ReAct Agent
+- 能理解项目指令文件和当前仓库结构。
+- 能在 ReAct 与 Plan-and-Execute 两类工作流之间切换。
+- 能通过细粒度权限规则控制工具执行。
+- 能支持 Skills、MCP、子 Agent 和 LangSmith 可观测性。
+- 能在长任务中保持上下文稳定，并向用户持续反馈执行状态。
 
-采用单一 ReAct (Reasoning + Acting) 循环图，后续可演进为 Multi-Agent。
+## 核心模块
 
-```
-┌─────────┐    tool_calls    ┌─────────┐
-│  agent   │ ──────────────► │  tools   │
-│ (LLM节点)│                 │(执行节点)│
-└─────────┘ ◄────────────── └─────────┘
-     │           results           │
-     │  no tool_calls             │
-     ▼                            │
-   END  ◄─────────────────────────┘
-```
-
-- `agent` 节点: 调用 LLM（绑定工具），返回 AI 消息
-- `tools` 节点: 执行工具调用，根据权限模式决定是否需用户确认
-- 条件边: 检查 AI 消息是否有 `tool_calls`，有则路由到 `tools`，无则结束
-- Checkpointer: `SqliteSaver` 做会话持久化，支持跨会话恢复
+| 模块 | 责任 |
+|------|------|
+| `codepilot/cli.py` | CLI 参数、模型配置、非交互执行入口 |
+| `codepilot/ui/repl.py` | 交互循环、斜杠命令、任务运行、LangSmith 上报 |
+| `codepilot/ui/renderer.py` | TUI 输出、动态等待提示、任务状态渲染 |
+| `codepilot/ui/permission.py` | 权限确认交互和始终允许规则 |
+| `codepilot/agent/graph.py` | LangGraph 工作流、工具节点、压缩与终止 |
+| `codepilot/agent/registry.py` | Agent 定义、工作流选择、工具集合选择 |
+| `codepilot/agent/prompts.py` | 系统提示、Agent 提示、项目上下文注入 |
+| `codepilot/tools/` | 文件、Shell、搜索、Git、Web、任务委派等工具 |
+| `codepilot/skills/` | 技能发现、加载、项目级技能支持 |
+| `codepilot/mcp/` | MCP Server 配置与工具桥接 |
+| `codepilot/storage/` | SQLite 会话和消息持久化 |
 
 ## AgentState
+
+当前状态只保留运行所需字段：
 
 ```python
 class AgentState(TypedDict):
     messages: Annotated[list[BaseMessage], add_messages]
     working_dir: str
     files_context: list[str]
-    mode: str  # "plan" | "confirm" | "auto"
+    task_type: str
+    agent_name: str
+    session_id: str
 ```
 
-## 技术栈
+`agent_name` 用于从 `AgentRegistry` 读取工作流、提示词、权限规则和工具集合。
 
-- Python 3.11+
-- LangChain Core + LangGraph (Agent 核心)
-- langchain-openai / langchain-anthropic / langchain-google-genai (模型 Provider)
-- Prompt Toolkit (REPL 交互输入)
-- Rich (终端格式化输出)
-- Pydantic (配置和状态验证)
-- Click (CLI 命令行参数解析)
+## AgentDef
 
-## 项目结构
-
-```
-codepilot/
-├── pyproject.toml
-├── codepilot/
-│   ├── __init__.py
-│   ├── cli.py                  # Click CLI 入口
-│   ├── agent/
-│   │   ├── __init__.py
-│   │   ├── graph.py            # LangGraph ReAct 状态图
-│   │   ├── state.py            # AgentState 类型定义
-│   │   └── prompts.py          # System prompt 模板
-│   ├── config/
-│   │   ├── __init__.py
-│   │   ├── settings.py         # Pydantic 配置模型
-│   │   └── providers.py        # LLM Provider 注册表
-│   ├── tools/
-│   │   ├── __init__.py
-│   │   ├── file_tools.py       # 文件读/写/编辑
-│   │   ├── shell_tool.py       # Shell 命令执行
-│   │   ├── search_tools.py     # 代码搜索 + glob
-│   │   ├── web_tool.py         # 网页搜索
-│   │   └── git_tool.py         # Git 操作
-│   ├── context/
-│   │   ├── __init__.py
-│   │   ├── project.py          # 项目结构分析
-│   │   └── selector.py         # 智能上下文选择
-│   ├── ui/
-│   │   ├── __init__.py
-│   │   ├── repl.py             # REPL 交互循环
-│   │   ├── renderer.py         # Rich 输出渲染
-│   │   └── permissions.py      # 权限确认 UI
-│   └── utils/
-│       ├── __init__.py
-│       └── diff.py             # 文件差异计算与展示
-├── tests/
-│   ├── test_agent.py
-│   ├── test_tools.py
-│   └── test_config.py
-└── README.md
+```python
+class AgentDef(BaseModel):
+    name: str
+    display_name: str
+    agent_mode: Literal["primary", "subagent"]
+    workflow: Literal["react", "plan_execute"]
+    prompt: str | None
+    model: str | None
+    steps: int
+    temperature: float | None
+    permissions: PermissionRuleset
+    tools: list[str] | None
+    description: str
+    confirm: bool
 ```
 
-## 模型配置
+| Agent | 工作流 | 分类 | 用途 |
+|-------|--------|------|------|
+| `build` | `react` | primary | 默认开发任务 |
+| `plan` | `react` | primary | 只读分析和方案 |
+| `plan-execute` | `plan_execute` | primary | 复杂任务先规划再执行 |
+| `explore` | `react` | subagent | 只读探索 |
+| `general` | `react` | subagent | 通用子任务 |
 
-配置文件: `~/.codepilot/config.yaml`
+## 工作流
 
-```yaml
-providers:
-  openai:
-    api_key: ""  # 推荐使用 CODEPILOT_OPENAI_API_KEY
-    base_url: https://api.openai.com/v1
-    models:
-      - gpt-4o
-      - gpt-4o-mini
-  anthropic:
-    api_key: ""  # 推荐使用 CODEPILOT_ANTHROPIC_API_KEY
-    models:
-      - claude-sonnet-4-20250514
-      - claude-haiku-4-5-20251001
-  deepseek:
-    api_key: ""  # 推荐使用 CODEPILOT_DEEPSEEK_API_KEY
-    base_url: https://api.deepseek.com/v1
-    models:
-      - deepseek-chat
-  ollama:
-    base_url: http://localhost:11434/v1
-    api_key: ollama
-    models:
-      - codellama
+### ReAct
 
-default:
-  provider: anthropic
-  model: claude-sonnet-4-20250514
-
-mode: confirm
+```
+START → agent → tools → agent → END
 ```
 
-Provider 分两类:
-- **Anthropic 原生**: 使用 `ChatAnthropic`
-- **OpenAI 兼容**: 使用 `ChatOpenAI` 配置 `base_url`（覆盖 DeepSeek、Ollama、vLLM 等）
-- **Google Gemini**: 使用 `ChatGoogleGenerativeAI`
-- **AWS Bedrock**: 使用 `ChatBedrock`
+`agent` 节点负责构造提示、绑定工具、检查上下文预算、调用模型。`tools` 节点负责权限判断、执行工具、截断工具结果、维护已读文件上下文。
 
-运行时通过 `/model` 命令切换模型。
+### Plan-and-Execute
 
-## 工具集
+```
+START → planner → agent → tools → agent → END
+```
 
-| 工具 | 描述 | 关键参数 |
-|------|------|----------|
-| `read_file` | 读取文件内容 | path, start_line, end_line |
-| `write_file` | 写入/创建文件 | path, content |
-| `edit_file` | 精确字符串替换编辑 | path, old_str, new_str |
-| `list_dir` | 列出目录内容 | path, recursive |
-| `glob_files` | Glob 模式搜索文件 | pattern, path |
-| `run_shell` | 执行 Shell 命令 | command, timeout |
-| `search_code` | grep 搜索代码 | pattern, path, file_type |
-| `web_search` | 网页搜索 | query |
-| `git_status` | 查看 Git 状态 | 无 |
-| `git_diff` | 查看文件差异 | path |
-| `git_log` | 查看 Git 日志 | count |
+`planner` 节点先生成显式计划，再由 `agent` 节点按计划执行。该工作流适合多文件修改、长链路排查、测试修复等任务。
 
-## 权限策略
+## 工具集合
 
-- **plan 模式**: 只读模式，仅允许 `read_file`, `list_dir`, `glob_files`, `search_code`, `git_status`, `git_diff`, `git_log`, `web_search`；所有写操作被拒绝
-- **confirm 模式**: 读取操作自动执行；写操作（`write_file`, `edit_file`, `run_shell`）需用户确认
-- **auto 模式**: 所有操作自动执行，无需手动确认
+| 工具 | 说明 |
+|------|------|
+| `read_file` | 读取文件，可按行范围读取 |
+| `glob` | 按文件模式查找路径 |
+| `grep` | 搜索代码和文本 |
+| `edit_file` | 基于补丁编辑文件 |
+| `write_file` | 写入新文件或整体替换文件 |
+| `run_shell` | 执行 Shell 命令 |
+| `git_*` | 查看 Git 状态、差异和历史 |
+| `web_*` | 读取网页和搜索网络信息 |
+| `task` | 派生子 Agent 执行独立任务 |
+| `skill` | 加载和执行技能指令 |
+| `mcp_call_tool` | 调用 MCP Server 暴露的工具 |
 
-工具安全:
-- `run_shell` 设置默认 30 秒超时
-- 文件操作限定在工作目录内（防止路径穿越）
-- Shell 命令黑名单: `rm -rf /`, `mkfs`, `dd` 等危险命令需额外确认
+## 权限规则
 
-## CLI 接口
+权限由 `PermissionRuleset` 按工具名和参数匹配：
+
+```python
+class PermissionRule(BaseModel):
+    tool: str
+    pattern: str
+    action: Literal["allow", "ask", "deny"]
+```
+
+规则用于表达“读操作自动允许”“写操作确认”“危险命令拒绝”“只读 Agent 禁止写入”等策略。
+
+## 项目指令文件
+
+CodePilot 会读取项目中的指令文件，并注入系统提示：
+
+- `AGENTS.md`
+- `CLAUDE.md`
+- `.claude/` 下的项目约定
+
+`/init` 命令用于初始化 `AGENTS.md`。
+
+## 交互体验
+
+- 长任务运行时显示动态等待提示，避免用户误以为程序卡住。
+- 权限确认支持方向键选择和回车确认。
+- 任务完成后显示耗时、token、工具调用、步骤、上下文占用。
+
+## 验收
 
 ```bash
-codepilot                          # 在当前目录启动
-codepilot --model gpt-4o           # 指定模型
-codepilot --mode plan              # 指定模式
-codepilot -p "修复 bug #123"       # 非交互模式，执行后退出
+pytest tests/ -q
+ruff check codepilot evals tests
 ```
-
-## REPL 斜杠命令（对标 Claude Code）
-
-- `/model` — 查看或切换模型
-- `/mode` — 切换权限模式（plan/confirm/auto）
-- `/add <file>` — 添加文件到上下文
-- `/compact` — 压缩对话历史，保留关键信息
-- `/clear` — 清除对话历史
-- `/diff` — 查看未提交的文件变更
-- `/undo` — 撤销上次文件修改
-- `/help` — 显示帮助
-- `/quit` 或 `/exit` — 退出
-
-## @ 引用命令
-
-- `@file <path>` — 引用文件内容到对话上下文
-- `@url <url>` — 引用网页内容到对话上下文
-- `@git <commit>` — 引用某个 commit 的变更内容
-- `@dir <path>` — 引用目录结构概览
-- 在对话中直接使用: `帮我优化 @file src/main.py 的性能` — 自动解析并加载文件
-
-## 输出渲染
-
-- Agent 思考过程: 灰色斜体显示
-- 工具调用: 蓝色面板显示工具名和参数
-- 工具结果: 绿色/红色显示成功/失败
-- 代码块: Rich Syntax 语法高亮
-- Markdown: Rich Markdown 渲染
-- 文件修改: 显示 diff 格式的变更预览
-
-## System Prompt 策略
-
-- 基础 prompt: 你是一个编程助手，可以读写文件、执行命令、搜索代码
-- 动态注入: 项目结构概览、已加载文件内容、当前 Git 状态
-- 模式调整: plan 模式下强调先规划再执行；auto 模式下减少确认
-- @ 引用注入: 解析用户输入中的 @ 引用，将对应内容注入上下文
-
-## 上下文管理
-
-- 智能上下文: Agent 自动分析项目结构（.gitignore 过滤），根据用户提问选择相关文件
-- 手动上下文: 用户通过 `/add` 和 `@file` 手动添加文件
-- 上下文窗口管理: 超过 token 限制时自动压缩历史消息（`/compact` 命令）
