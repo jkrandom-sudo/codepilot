@@ -64,6 +64,7 @@ def build_agent_graph(
     custom_tools: list[str] | None = None,
     storage: Any | None = None,
     ask_permission_callback: Callable[[str, dict], bool] | None = None,
+    coauthor: bool = True,
 ) -> StateGraph:
     if context_window is None:
         from codepilot.config.context_windows import get_usable_context
@@ -86,7 +87,7 @@ def build_agent_graph(
     tools_by_name = {t.name: t for t in tools}
     llm_with_tools = llm.bind_tools(tools)
 
-    system_prompt = build_system_prompt(agent_name=agent_name, confirm=confirm)
+    system_prompt = build_system_prompt(agent_name=agent_name, confirm=confirm, coauthor=coauthor)
     context_manager = AgentContextManager(
         context_window=context_window,
         base_tool_result_chars=MAX_TOOL_RESULT_CHARS,

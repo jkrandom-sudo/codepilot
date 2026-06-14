@@ -30,7 +30,8 @@ NON_INTERACTIVE_HEARTBEAT_INTERVAL = 15.0
 @click.option("--prompt", "-p", default=None, help="Non-interactive mode: execute prompt and exit")
 @click.option("--resume", "-r", default=None, help="Resume a session by ID")
 @click.option("--resume-last", is_flag=True, default=False, help="Resume the most recent session")
-def main(model: str | None, agent: str | None, confirm: bool, prompt: str | None, resume: str | None, resume_last: bool) -> None:
+@click.option("--coauthor/--no-coauthor", default=None, help="Add Co-authored-by to git commits (default: from config)")
+def main(model: str | None, agent: str | None, confirm: bool, prompt: str | None, resume: str | None, resume_last: bool, coauthor: bool | None) -> None:
     """CodePilot - AI coding agent for the terminal."""
     os.environ.setdefault("CODEPILOT_WORKING_DIR", os.getcwd())
 
@@ -51,15 +52,21 @@ def main(model: str | None, agent: str | None, confirm: bool, prompt: str | None
     else:
         resolved_agent = "auto"
 
+    # coauthor: CLI flag overrides config
+    if coauthor is None:
+        resolved_coauthor = config.coauthor
+    else:
+        resolved_coauthor = coauthor
+
     if prompt:
-        _run_non_interactive(registry, resolved_model, resolved_agent, confirm, prompt)
+        _run_non_interactive(registry, resolved_model, resolved_agent, confirm, prompt, coauthor=resolved_coauthor)
     else:
         session_id = None
         if resume:
             session_id = resume
         elif resume_last:
             session_id = _get_latest_session_id()
-        _run_interactive(registry, resolved_model, resolved_agent, confirm, session_id)
+        _run_interactive(registry, resolved_model, resolved_agent, confirm, session_id, coauthor=resolved_coauthor)
 
 
 def _get_latest_session_id() -> str | None:
@@ -91,7 +98,7 @@ def _resolve_effective_agent(agent_name: str, confirm: bool) -> tuple[str, bool]
     return agent_name, confirm
 
 
-def _run_interactive(registry, model: str, agent_name: str = "build", confirm: bool = True, session_id: str | None = None) -> None:
+def _run_interactive(registry, model: str, agent_name: str = "build", confirm: bool = True, session_id: str | None = None, coauthor: bool = True) -> None:
     from codepilot.agent.graph import build_agent_graph
     from codepilot.agent.registry import AgentRegistry
     from codepilot.config.context_windows import get_usable_context, parse_model_spec
@@ -121,6 +128,7 @@ def _run_interactive(registry, model: str, agent_name: str = "build", confirm: b
         agent_name=effective_agent,
         context_window=context_window,
         custom_permissions=graph_permissions,
+        coauthor=coauthor,
     )
 
     storage = Storage()
@@ -133,7 +141,7 @@ def _run_interactive(registry, model: str, agent_name: str = "build", confirm: b
     repl.run()
 
 
-def _run_non_interactive(registry, model: str, agent_name: str, confirm: bool, prompt: str) -> None:
+def _run_non_interactive(registry, model: str, agent_name: str, confirm: bool, prompt: str, coauthor: bool = True) -> None:
     from codepilot.agent.graph import build_agent_graph, graph_recursion_limit
     from codepilot.agent.registry import AgentRegistry
     from codepilot.agent.router import select_agent_for_task
@@ -165,6 +173,7 @@ def _run_non_interactive(registry, model: str, agent_name: str, confirm: bool, p
             llm,
             agent_name=selected_agent,
             custom_permissions=custom_permissions,
+            coauthor=coauthor,
         )
     except Exception as e:
         raise click.ClickException(_format_non_interactive_error(e)) from None

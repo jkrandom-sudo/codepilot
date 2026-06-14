@@ -49,6 +49,7 @@ class AppSettings(BaseModel):
     mcp: dict[str, MCPServerConfig] = Field(default_factory=dict)
     agent: str = "build"
     confirm: bool = True
+    coauthor: bool = True
 
 
 DEFAULT_CONFIG = AppSettings(

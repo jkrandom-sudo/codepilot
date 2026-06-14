@@ -326,6 +326,7 @@ def get_model_family(model_name: str) -> str:
 def build_system_prompt(
     agent_name: str = "build",
     confirm: bool = True,
+    coauthor: bool = True,
 ) -> str:
     if agent_name and agent_name in AGENT_PROMPTS:
         template = AGENT_PROMPTS[agent_name]
@@ -342,7 +343,17 @@ def build_system_prompt(
     else:
         instruction = AGENT_INSTRUCTIONS["auto"]
 
-    return template.format(agent_instruction=instruction)
+    base = template.format(agent_instruction=instruction)
+
+    if coauthor and not agent_def.is_readonly:
+        base += (
+            "\n\n## Git commit convention (CRITICAL):\n"
+            "- When running git commit commands, ALWAYS add `Co-authored-by: CodePilot <codepilot@langgraph.dev>` "
+            "as the last line of the commit message.\n"
+            "- Use `git commit -m \"message\" -m \"Co-authored-by: CodePilot <codepilot@langgraph.dev>\"` format.\n"
+        )
+
+    return base
 
 
 def get_project_context(working_dir: str | None = None) -> str:
