@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-import re
 import time
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
@@ -16,7 +15,15 @@ from codepilot.agent._utils import validate_message_pairs
 from codepilot.context.selector import parse_references
 from codepilot.ui.completer import AtFileCompleter, FileIndex
 from codepilot.ui.commands import SLASH_COMMANDS, CommandHandler
-from codepilot.ui.intent import chat_response, classify_intent, classify_task, greeting_response
+from codepilot.ui.intent import (
+    build_post_task_prompt,
+    chat_response,
+    classify_intent_with_context,
+    classify_task,
+    expand_choice_reply,
+    expand_numbered_choice_reply,
+    greeting_response,
+)
 from codepilot.ui.permissions import PermissionHandler, prompt_permission_choice
 from codepilot.ui.renderer import Renderer
 from codepilot.utils.token_usage import TokenUsageAccumulator, extract_token_usage
@@ -30,20 +37,6 @@ TOOL_ERROR_PREFIXES = (
     "blocked:",
     "[permission denied]",
     "permission denied",
-)
-
-CHOICE_REPLY_RE = re.compile(r"^\s*(?:选|选择|第)?\s*([1-9]\d*)\s*(?:个|项|号)?\s*[.。]?\s*$")
-NUMBERED_OPTION_RE = re.compile(r"(?m)^\s*(?:\[\s*)?([1-9]\d*)(?:\s*\])?[\s.、)]+\S+")
-CHOICE_PROMPT_MARKERS = (
-    "需要我执行其中哪一个",
-    "请选择",
-    "选哪一个",
-    "哪一个",
-    "任选",
-    "建议操作",
-    "which one",
-    "choose one",
-    "select one",
 )
 
 
@@ -85,34 +78,6 @@ def resolve_tool_message(tool_calls_by_id: dict[str, dict], msg: ToolMessage) ->
     tool_name = tc_info.get("name") or getattr(msg, "name", None) or "unknown"
     tool_args = tc_info.get("args", {})
     return tool_name, tool_args, tc_info
-
-
-def expand_numbered_choice_reply(user_input: str, messages: list[BaseMessage]) -> str:
-    """Expand a bare numeric reply when the previous AI message asked for a choice."""
-    match = CHOICE_REPLY_RE.match(user_input)
-    if not match:
-        return user_input
-
-    previous_ai = ""
-    for msg in reversed(messages):
-        if isinstance(msg, AIMessage) and isinstance(msg.content, str):
-            previous_ai = msg.content
-            break
-    if not previous_ai:
-        return user_input
-
-    lower = previous_ai.lower()
-    has_choice_prompt = any(marker in lower for marker in CHOICE_PROMPT_MARKERS)
-    option_numbers = set(NUMBERED_OPTION_RE.findall(previous_ai))
-    selected = match.group(1)
-
-    if not has_choice_prompt or selected not in option_numbers or len(option_numbers) < 2:
-        return user_input
-
-    return (
-        f"用户选择了上一条建议操作中的第 {selected} 项。\n"
-        "请根据上一条消息中的编号选项执行该项；如果该项需要工具调用，请继续调用相应工具。"
-    )
 
 
 def token_display_for_tool_call(round_tokens: int, tool_call_index: int) -> int:
@@ -314,12 +279,12 @@ class REPL:
                 continue
 
             clean_input, ref_content = parse_references(user_input)
-            clean_input = expand_numbered_choice_reply(clean_input, self.messages)
+            clean_input = expand_choice_reply(clean_input, self.messages)
             full_input = clean_input
             if ref_content:
                 full_input = f"{clean_input}\n\n--- Referenced content ---\n{ref_content}"
 
-            intent = classify_intent(full_input)
+            intent = classify_intent_with_context(full_input, self.messages)
             if intent == "greeting":
                 response = greeting_response(full_input)
                 self.console.print(response)
@@ -353,7 +318,7 @@ class REPL:
             self._recent_tool_calls.clear()
 
             try:
-                intent = classify_intent(clean_input)
+                intent = classify_intent_with_context(clean_input, self.messages)
                 if intent == "greeting":
                     self._handle_greeting()
                 elif intent == "chat":
@@ -383,6 +348,7 @@ class REPL:
                     input_tokens=self._task_input_tokens,
                     output_tokens=self._task_output_tokens,
                 )
+                self._render_post_task_suggestions(outcome)
 
             if self._context_tokens > 0:
                 self._show_context_bar()
@@ -873,6 +839,41 @@ class REPL:
         reply = chat_response(self._task_user_input)
         self.renderer.render_message(reply)
         self.messages.append(AIMessage(content=reply))
+
+    def _render_post_task_suggestions(self, outcome: str) -> None:
+        """Show a numbered next-step menu after a coding task completes.
+
+        Persists the menu as the trailing AI message so the next user turn —
+        even a brief reply like ``好的`` or ``2`` — gets routed back through the
+        agent instead of the canned greeting/chat responses.
+        """
+        if outcome in {"no_op"}:
+            return
+
+        task_type = classify_task(self._task_user_input or "")
+        use_chinese = self._reply_in_chinese()
+        prompt = build_post_task_prompt(task_type, outcome, use_chinese=use_chinese)
+        if not prompt:
+            return
+
+        self.console.print()
+        self.console.print(prompt)
+
+        if self.messages and isinstance(self.messages[-1], AIMessage):
+            existing = self.messages[-1]
+            existing_content = existing.content if isinstance(existing.content, str) else ""
+            joined = f"{existing_content}\n\n{prompt}" if existing_content else prompt
+            self.messages[-1] = AIMessage(content=joined)
+        else:
+            self.messages.append(AIMessage(content=prompt))
+        self._update_context_stats()
+        self._persist_messages()
+
+    def _reply_in_chinese(self) -> bool:
+        text = (self._task_user_input or "").strip()
+        if not text:
+            return True
+        return any("一" <= c <= "鿿" for c in text)
 
     def _update_task_verification(
         self,

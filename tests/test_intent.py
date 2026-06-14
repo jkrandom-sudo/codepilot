@@ -1,11 +1,15 @@
 import pytest
 
 from codepilot.ui.intent import (
+    build_post_task_prompt,
     chat_response,
     classify_intent,
+    classify_intent_with_context,
     classify_task,
+    expand_choice_reply,
     greeting_response,
     is_greeting,
+    previous_ai_awaits_followup,
 )
 from codepilot.agent.router import select_agent_for_task
 
@@ -113,3 +117,124 @@ def test_chat_response_is_deterministic_for_help_and_identity():
     assert "CodePilot" in chat_response("help")
     assert "分析当前项目" in chat_response("你能做什么")
     assert "AI 编程助手" in chat_response("你是谁")
+
+
+# --- Context-aware classification --------------------------------------------
+
+class _FakeAI:
+    """Lightweight stand-in for AIMessage so tests don't depend on langchain."""
+
+    def __init__(self, content: str) -> None:
+        self.content = content
+
+
+# `classify_intent_with_context` checks the class name, so make the type look right.
+_FakeAI.__name__ = "AIMessage"
+
+
+class _FakeHuman:
+    def __init__(self, content: str) -> None:
+        self.content = content
+
+
+_FakeHuman.__name__ = "HumanMessage"
+
+
+def test_previous_ai_awaits_followup_detects_question_markers():
+    assert previous_ai_awaits_followup([_FakeAI("是否需要我继续修复其他文件？")]) is True
+    assert previous_ai_awaits_followup([_FakeAI("已完成所有修改。")]) is False
+    assert previous_ai_awaits_followup([]) is False
+
+
+@pytest.mark.parametrize("reply", ["好的", "好", "继续", "可以", "ok", "yes", "确定"])
+def test_short_affirmative_after_followup_is_routed_to_coding(reply):
+    history = [_FakeAI("我可以帮你运行 pytest 验证刚才的修改，是否继续？")]
+
+    assert classify_intent_with_context(reply, history) == "coding"
+
+
+def test_short_affirmative_without_context_still_uses_canned_branch():
+    # The original bug: a bare "好的" with no follow-up question gets the
+    # canned greeting/chat reply (or coding if it happens to hit a keyword);
+    # what matters is that the classifier doesn't fabricate context.
+    assert classify_intent_with_context("好的", []) in {"greeting", "chat"}
+    assert classify_intent_with_context("ok", []) in {"greeting", "chat"}
+
+
+@pytest.mark.parametrize("reply", ["不", "不要", "算了", "no", "cancel"])
+def test_short_negative_after_followup_is_routed_to_coding(reply):
+    history = [_FakeAI("是否需要我继续修复？")]
+
+    assert classify_intent_with_context(reply, history) == "coding"
+
+
+def test_short_affirmative_without_followup_keeps_canned_reply():
+    history = [_FakeAI("已完成所有修改，输出已经显示在上面。")]
+    # No question marker -> falls back to keyword-only classification.
+    assert classify_intent_with_context("好的", history) in {"greeting", "chat"}
+
+
+def test_expand_choice_reply_handles_affirmative_after_followup():
+    history = [_FakeAI("是否需要我继续运行 ruff 检查？")]
+    expanded = expand_choice_reply("好的", history)
+    assert "用户确认继续" in expanded
+
+
+def test_expand_choice_reply_handles_negative_after_followup():
+    history = [_FakeAI("要不要我把这块逻辑迁移到独立模块？")]
+    expanded = expand_choice_reply("不要", history)
+    assert "拒绝" in expanded
+
+
+def test_expand_choice_reply_passthrough_when_no_followup():
+    history = [_FakeAI("已完成。")]
+    assert expand_choice_reply("好的", history) == "好的"
+    assert expand_choice_reply("hi", history) == "hi"
+
+
+def test_expand_choice_reply_numeric_still_works():
+    history = [_FakeAI(
+        "建议操作（任选）：\n1 运行 pytest\n2 运行 ruff\n3 提交\n需要我执行其中哪一个？"
+    )]
+    expanded = expand_choice_reply("2", history)
+    assert "第 2 项" in expanded
+
+
+def test_brief_followup_reply_with_low_keyword_density_routes_to_coding():
+    # User says "试试看" right after the agent asked a follow-up. Without context
+    # this is filtered out as chat/no-op; with context it should reach the agent.
+    history = [_FakeAI("我可以帮你接着把测试加上，要不要继续？")]
+    assert classify_intent_with_context("试试看", history) == "coding"
+
+
+# --- Post-task suggestions ----------------------------------------------------
+
+def test_build_post_task_prompt_returns_numbered_options_for_file_edit():
+    prompt = build_post_task_prompt("file_edit", "success", use_chinese=True)
+    assert "下一步可以做" in prompt
+    assert "1 " in prompt
+    assert "2 " in prompt
+    assert "3 " in prompt
+    assert "回复编号" in prompt
+
+
+def test_build_post_task_prompt_error_offers_retry_path():
+    prompt = build_post_task_prompt("file_edit", "error", use_chinese=True)
+    assert "错误" in prompt or "重试" in prompt
+
+
+def test_build_post_task_prompt_english_when_requested():
+    prompt = build_post_task_prompt("file_edit", "success", use_chinese=False)
+    assert "Suggested next steps" in prompt
+    assert "Reply with a number" in prompt
+
+
+def test_post_task_prompt_round_trips_with_context_aware_classifier():
+    """A follow-up menu plus a brief reply should route to coding, not greeting."""
+    menu = build_post_task_prompt("file_edit", "success", use_chinese=True)
+    history = [_FakeAI(menu)]
+
+    assert previous_ai_awaits_followup(history) is True
+    assert classify_intent_with_context("2", history) == "coding"
+    assert classify_intent_with_context("好的", history) == "coding"
+    assert "第 2 项" in expand_choice_reply("2", history)

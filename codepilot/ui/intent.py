@@ -1,6 +1,9 @@
 """Intent recognition and task classification for REPL."""
 from __future__ import annotations
 
+import re
+from typing import Iterable, Sequence
+
 
 GREETING_EXACT = frozenset({
     "hello", "hi", "hey", "hola", "yo", "sup", "what's up",
@@ -262,3 +265,246 @@ def is_dev_intent(user_input: str) -> bool:
     """Check if input has development intent."""
     s_lower = user_input.lower()
     return any(kw in s_lower for kw in DEV_KEYWORDS)
+
+
+# --- Context-aware intent helpers --------------------------------------------
+
+# Markers that suggest the previous AI message is asking the user to pick or
+# confirm a follow-up step. Used both for numeric replies and for short
+# affirmative replies that would otherwise be misclassified as greetings.
+FOLLOWUP_PROMPT_MARKERS: tuple[str, ...] = (
+    "需要我执行其中哪一个",
+    "请选择",
+    "选哪一个",
+    "哪一个",
+    "任选",
+    "建议操作",
+    "建议下一步",
+    "下一步",
+    "是否继续",
+    "是否需要",
+    "要不要",
+    "需要我",
+    "可以继续吗",
+    "继续吗",
+    "which one",
+    "choose one",
+    "select one",
+    "should i continue",
+    "shall i continue",
+    "do you want me",
+    "would you like",
+    "next step",
+    "?",
+    "？",
+)
+
+NUMBERED_OPTION_RE = re.compile(r"(?m)^\s*(?:\[\s*)?([1-9]\d*)(?:\s*\])?[\s.、)]+\S+")
+CHOICE_REPLY_RE = re.compile(r"^\s*(?:选|选择|第)?\s*([1-9]\d*)\s*(?:个|项|号)?\s*[.。]?\s*$")
+
+AFFIRMATIVE_REPLIES = frozenset({
+    "好", "好的", "可以", "行", "嗯", "嗯嗯", "对", "是", "是的",
+    "继续", "继续吧", "请继续", "go", "go on", "go ahead",
+    "yes", "y", "yep", "yeah", "sure", "ok", "okay", "k",
+    "确认", "确定", "同意", "没问题",
+    "proceed", "continue", "fine", "alright",
+})
+
+NEGATIVE_REPLIES = frozenset({
+    "不", "不要", "别", "停", "停下", "算了", "取消", "no", "nope", "n", "stop",
+    "cancel", "skip", "abort",
+})
+
+
+def _previous_ai_text(messages: Sequence[object]) -> str:
+    """Return the last AIMessage text content (or empty)."""
+    for msg in reversed(messages):
+        cls_name = type(msg).__name__
+        if cls_name == "AIMessage":
+            content = getattr(msg, "content", "")
+            if isinstance(content, str) and content.strip():
+                return content
+    return ""
+
+
+def previous_ai_awaits_followup(messages: Sequence[object]) -> bool:
+    """True when the latest AI message looks like it's asking for direction."""
+    text = _previous_ai_text(messages)
+    if not text:
+        return False
+    lower = text.lower()
+    return any(marker in lower for marker in FOLLOWUP_PROMPT_MARKERS)
+
+
+def expand_choice_reply(user_input: str, messages: Sequence[object]) -> str:
+    """Expand a short reply (numeric or affirmative) when the prior AI asked a question.
+
+    - Numeric `2` after a numbered list -> explicit instruction to execute option 2.
+    - Affirmative `好的`/`ok` after a yes/no question -> "继续执行你刚才提议的下一步".
+    - Negative `不要`/`no` -> "请不要执行刚才提议的方案，等待我的下一步指令".
+
+    If the prior AI message does not look like a follow-up question, the input
+    is returned unchanged.
+    """
+    if not user_input or not user_input.strip():
+        return user_input
+
+    previous_ai = _previous_ai_text(messages)
+    if not previous_ai:
+        return user_input
+
+    lower_prev = previous_ai.lower()
+    has_followup_prompt = any(marker in lower_prev for marker in FOLLOWUP_PROMPT_MARKERS)
+
+    match = CHOICE_REPLY_RE.match(user_input)
+    if match:
+        option_numbers = set(NUMBERED_OPTION_RE.findall(previous_ai))
+        selected = match.group(1)
+        if has_followup_prompt and selected in option_numbers and len(option_numbers) >= 2:
+            return (
+                f"用户选择了上一条建议操作中的第 {selected} 项。\n"
+                "请根据上一条消息中的编号选项执行该项；如果该项需要工具调用，请继续调用相应工具。"
+            )
+        return user_input
+
+    if not has_followup_prompt:
+        return user_input
+
+    normalized = user_input.strip().lower().rstrip("!！？.。?？，, 、~")
+
+    if normalized in AFFIRMATIVE_REPLIES:
+        return (
+            "用户确认继续执行你在上一条消息中提议的方案/下一步。"
+            "请直接按你刚才的建议继续，必要时调用相应工具。"
+        )
+    if normalized in NEGATIVE_REPLIES:
+        return (
+            "用户拒绝了你在上一条消息中提议的方案。"
+            "请不要执行该方案，简短确认并等待用户给出新的指示。"
+        )
+    return user_input
+
+
+# Backwards-compat alias used by tests and older call sites.
+expand_numbered_choice_reply = expand_choice_reply
+
+
+def classify_intent_with_context(
+    user_input: str,
+    messages: Sequence[object] | None = None,
+) -> str:
+    """Context-aware intent classification.
+
+    Falls back to keyword-based `classify_intent` when there is no prior agent
+    turn. When the previous AI message looks like a follow-up question, short
+    affirmative or numeric replies are routed to `coding` so they don't trigger
+    the canned greeting/chat responses.
+    """
+    base = classify_intent(user_input)
+    if not messages or not previous_ai_awaits_followup(messages):
+        return base
+
+    s = user_input.strip()
+    if not s:
+        return base
+
+    normalized = s.lower().rstrip("!！？.。?？，, 、~")
+    if (
+        normalized in AFFIRMATIVE_REPLIES
+        or normalized in NEGATIVE_REPLIES
+        or CHOICE_REPLY_RE.match(s)
+    ):
+        return "coding"
+
+    # Brief replies (<=8 chars / 6 chars CJK) right after a follow-up prompt
+    # are most likely the user steering the agent, not idle chit-chat.
+    if base in {"greeting", "chat"} and len(normalized) <= 12:
+        return "coding"
+
+    return base
+
+
+# --- Post-task suggestion -----------------------------------------------------
+
+def build_post_task_prompt(
+    task_type: str,
+    outcome: str,
+    *,
+    use_chinese: bool = True,
+) -> str:
+    """Build a short menu of suggested next steps to show after a task completes.
+
+    Designed to give the user concrete handles instead of an empty prompt — the
+    options are surfaced as a numbered list so the user can reply `1`/`2`/`3`
+    and `expand_choice_reply` will route the choice back into the agent.
+    """
+    options = _post_task_options(task_type, outcome, use_chinese=use_chinese)
+    if not options:
+        return ""
+
+    if use_chinese:
+        header = "下一步可以做："
+        tail = "回复编号执行对应操作，或直接描述你想做的事。"
+    else:
+        header = "Suggested next steps:"
+        tail = "Reply with a number to run that step, or describe what you want next."
+
+    lines = [header]
+    for idx, opt in enumerate(options, 1):
+        lines.append(f"{idx} {opt}")
+    lines.append("")
+    lines.append(tail)
+    return "\n".join(lines)
+
+
+def _post_task_options(task_type: str, outcome: str, *, use_chinese: bool) -> list[str]:
+    cn = use_chinese
+    if outcome == "error":
+        return [
+            "查看错误详情并重试" if cn else "Inspect the error and retry",
+            "切换到 plan 模式重新分析" if cn else "Switch to plan mode and re-analyse",
+            "结束当前任务" if cn else "End the current task",
+        ]
+    if outcome in {"partial", "timeout"}:
+        return [
+            "继续完成剩余步骤" if cn else "Continue the remaining steps",
+            "总结当前进展并提交已完成部分" if cn else "Summarise progress and commit what's done",
+            "切换为 plan-execute 重新规划" if cn else "Replan with plan-execute",
+        ]
+
+    if task_type in {"file_edit", "file_write"}:
+        return [
+            "运行测试 / lint 验证改动" if cn else "Run tests / lint to verify the changes",
+            "查看本次改动的 diff" if cn else "Show the diff of this change",
+            "提交并推送（git commit & push）" if cn else "Commit and push (git commit & push)",
+        ]
+    if task_type == "code_search":
+        return [
+            "对找到的代码进行修改" if cn else "Edit the matched code",
+            "查看相关文件的完整内容" if cn else "Read the full files we matched",
+            "结束当前任务" if cn else "End the current task",
+        ]
+    if task_type == "project_analysis":
+        return [
+            "根据分析给出优化方案" if cn else "Draft an improvement plan from the analysis",
+            "选定一个点开始优化（plan-execute）" if cn else "Pick one item and start with plan-execute",
+            "结束当前任务" if cn else "End the current task",
+        ]
+    if task_type == "test_evaluation":
+        return [
+            "针对失败的测试逐个修复" if cn else "Fix the failing tests one by one",
+            "生成评估报告并提交" if cn else "Write an evaluation report and commit",
+            "结束当前任务" if cn else "End the current task",
+        ]
+    if task_type == "command_run":
+        return [
+            "查看完整输出并继续排查" if cn else "Inspect the full output and keep digging",
+            "调整参数重试" if cn else "Adjust parameters and retry",
+            "结束当前任务" if cn else "End the current task",
+        ]
+
+    return [
+        "继续后续工作" if cn else "Keep going on the next step",
+        "总结当前结论" if cn else "Summarise current findings",
+        "结束当前任务" if cn else "End the current task",
+    ]

@@ -202,3 +202,44 @@ def test_tool_call_token_display_counts_model_round_once():
     displayed = [token_display_for_tool_call(42, index) for index in range(3)]
 
     assert displayed == [42, 0, 0]
+
+
+def test_render_post_task_suggestions_appends_menu_to_last_ai_message():
+    """The next-step menu must be persisted as the trailing AI message so
+    `classify_intent_with_context` recognises a follow-up on the next turn."""
+    from langchain_core.messages import AIMessage, HumanMessage
+
+    repl = REPL.__new__(REPL)
+    repl._task_user_input = "修改 codepilot/ui/intent.py"
+    repl.console = FakeConsole()
+    repl.messages = [
+        HumanMessage(content="修改 codepilot/ui/intent.py"),
+        AIMessage(content="已完成修改。"),
+    ]
+    repl.storage = None
+    repl._session_id = None
+    repl._context_window = 100_000
+    repl._context_tokens = 0
+    repl._context_messages = 0
+
+    repl._render_post_task_suggestions("success")
+
+    last = repl.messages[-1]
+    assert isinstance(last, AIMessage)
+    assert "下一步可以做" in last.content
+    assert "已完成修改。" in last.content
+
+
+def test_render_post_task_suggestions_skips_for_no_op_outcome():
+    from langchain_core.messages import AIMessage
+
+    repl = REPL.__new__(REPL)
+    repl._task_user_input = "thanks"
+    repl.console = FakeConsole()
+    repl.messages = [AIMessage(content="完成。")]
+    repl.storage = None
+    repl._session_id = None
+
+    repl._render_post_task_suggestions("no_op")
+
+    assert repl.messages[-1].content == "完成。"
