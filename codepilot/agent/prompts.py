@@ -348,9 +348,9 @@ def build_system_prompt(
     if coauthor and not agent_def.is_readonly:
         base += (
             "\n\n## Git commit convention (CRITICAL):\n"
-            "- When running git commit commands, ALWAYS add `Co-authored-by: CodePilot <codepilot@langgraph.dev>` "
+            "- When running git commit commands, ALWAYS add `Co-authored-by: CodePilot <noreply@codepilot.dev>` "
             "as the last line of the commit message.\n"
-            "- Use `git commit -m \"message\" -m \"Co-authored-by: CodePilot <codepilot@langgraph.dev>\"` format.\n"
+            "- Use `git commit -m \"message\" -m \"Co-authored-by: CodePilot <noreply@codepilot.dev>\"` format.\n"
         )
 
     return base
