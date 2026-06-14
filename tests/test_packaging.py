@@ -19,7 +19,7 @@ def test_package_version_matches_runtime_version():
 
     data = tomllib.loads((ROOT / "pyproject.toml").read_text())
 
-    assert data["project"]["version"] == "0.1.9"
+    assert data["project"]["version"] == "0.2.0"
     assert codepilot.__version__ == data["project"]["version"]
 
 

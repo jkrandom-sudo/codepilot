@@ -157,6 +157,71 @@ class TestPrompts:
         assert "read multiple relevant source files" in prompt
         assert "Token target" in prompt
 
+    def test_system_prompt_requires_post_edit_verification(self):
+        """A core part of closing the gap to Claude Code: the model must run
+        verification (tests/lint/re-read) after edits, not skip straight to
+        the summary."""
+        prompt = build_system_prompt(agent_name="build")
+        assert "VERIFY" in prompt
+        # Re-reading after an edit is now an expected step, not banned.
+        assert "Re-reading a file AFTER you edited it" in prompt
+        # Tests / lint after edits are encouraged, not "optional".
+        assert "Run tests / lint" in prompt or "Running tests and lint after edits" in prompt
+
+    def test_system_prompt_no_longer_bans_re_reads_outright(self):
+        """Old prompt told the model 'AT MOST ONCE' and 'NEVER re-read', which
+        was the leading driver of premature stops in our LangSmith data."""
+        prompt = build_system_prompt(agent_name="build")
+        assert "AT MOST ONCE" not in prompt
+        assert "NEVER re-read" not in prompt
+        assert "trust your edits" not in prompt
+
+    def test_system_prompt_distinguishes_simple_vs_engineering_stop_conditions(self):
+        prompt = build_system_prompt(agent_name="build")
+        assert "When to STOP" in prompt
+        assert "I shipped a fix AND verified it" in prompt or "shipped" in prompt.lower()
+
+
+class TestIterationBudgets:
+    def test_iteration_budgets_are_lifted_for_complex_tasks(self):
+        """Budgets were raised to give the model room to run verification
+        after edits without hitting the cap."""
+        from codepilot.agent.nodes import TASK_ITERATION_LIMITS
+
+        # No regressions vs the prior floor; complex tasks have headroom.
+        assert TASK_ITERATION_LIMITS["file_edit"] >= 100
+        assert TASK_ITERATION_LIMITS["project_analysis"] >= 80
+        assert TASK_ITERATION_LIMITS["test_evaluation"] >= 120
+        # Simple lookups still get a small budget — that's fine.
+        assert TASK_ITERATION_LIMITS["general_question"] <= 12
+
+    def test_truncate_response_caps_lifted_for_complex_tasks(self):
+        """Truncation caps doubled for high-tool-count tasks so structured
+        evaluation summaries can actually fit."""
+        from codepilot.agent.nodes import truncate_response, MAX_RESPONSE_CHARS
+        from codepilot.agent.registry import AgentRegistry
+        from langchain_core.messages import AIMessage
+
+        agent_def = AgentRegistry().get_or_default("build")
+
+        long_content = "x" * 25000
+        msg = AIMessage(content=long_content)
+        out = truncate_response(msg, agent_def=agent_def, total_tool_invocations=15)
+        # 15 tools => limit >= 22000, so we should NOT be cut to the old 18000 limit.
+        assert len(out.content) > 18000
+
+        # 0 tools (simple Q&A) still gets the small cap.
+        out_short = truncate_response(msg, agent_def=agent_def, total_tool_invocations=0)
+        assert len(out_short.content) <= 11000  # 10000 cap + truncation tail
+
+    def test_explore_agent_prompt_lifts_max_tool_calls(self):
+        """The explore subagent used to hard-cap at 6 tool calls — now it
+        should accept 8-15 for cross-module investigations."""
+        from codepilot.agent.prompts import EXPLORE_AGENT_PROMPT
+        assert "Maximum 6 tool calls" not in EXPLORE_AGENT_PROMPT
+        assert "8-15" in EXPLORE_AGENT_PROMPT
+
+
 
 class TestReferenceParser:
     def test_file_reference(self, tmp_path):

@@ -37,14 +37,14 @@ FILE_SUMMARY_MAX_KEY_LINES = agent_context.FILE_SUMMARY_MAX_KEY_LINES
 FILE_SUMMARY_MAX_LINE_LEN = agent_context.FILE_SUMMARY_MAX_LINE_LEN
 
 TASK_ITERATION_LIMITS: dict[str, int] = {
-    "code_search": 20,
-    "project_analysis": 80,
-    "general_question": 4,
-    "file_edit": 96,
-    "file_write": 96,
-    "command_run": 56,
-    "test_evaluation": 112,
-    "subagent": 120,
+    "code_search": 24,
+    "project_analysis": 96,
+    "general_question": 6,
+    "file_edit": 120,
+    "file_write": 112,
+    "command_run": 64,
+    "test_evaluation": 128,
+    "subagent": 128,
 }
 DEFAULT_TASK_ITERATION_LIMIT = MAX_ITERATIONS
 DEEP_CONTEXT_TASKS = {"project_analysis", "file_edit", "file_write", "test_evaluation", "subagent"}
@@ -169,22 +169,28 @@ def truncate_response(
     agent_def: AgentDef,
     total_tool_invocations: int,
 ) -> AIMessage:
-    """Cap the response content size based on agent type and usage."""
+    """Cap the response content size based on agent type and usage.
+
+    Bumped from prior limits to give the model room to produce a real
+    structured summary on complex tasks. The previous 8000/12000/18000 caps
+    were silently truncating evaluation/optimization summaries and pushed
+    the model toward over-condensed output.
+    """
     if not (hasattr(response, "content") and isinstance(response.content, str)):
         return response
     if getattr(response, "tool_calls", None):
         return response
 
     if agent_def.is_readonly:
-        response_limit = 12000
+        response_limit = 16000
     elif agent_def.workflow == "plan_execute" or total_tool_invocations >= 20:
         response_limit = MAX_RESPONSE_CHARS
     elif total_tool_invocations >= 10:
-        response_limit = 18000
+        response_limit = 22000
     elif total_tool_invocations >= 3:
-        response_limit = 12000
+        response_limit = 16000
     else:
-        response_limit = 8000
+        response_limit = 10000
 
     if len(response.content) > response_limit:
         truncated = response.content[:response_limit]
