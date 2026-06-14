@@ -10,6 +10,7 @@ import os
 import tempfile
 from unittest.mock import MagicMock
 
+import pytest
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
 from codepilot.agent._utils import validate_message_pairs
@@ -779,3 +780,101 @@ class TestRateLimitRetry:
         from codepilot.config.providers import SERVER_ERROR_MAX_RETRIES, SERVER_ERROR_BASE_DELAY
         assert SERVER_ERROR_MAX_RETRIES >= 1
         assert SERVER_ERROR_BASE_DELAY >= 1.0
+
+
+class TestNetworkErrorRetry:
+    """Network errors (APIConnectionError etc.) must be retried, not raised.
+
+    Driven by LangSmith trace data showing APIConnectionError as the most
+    common error class on recent runs.
+    """
+
+    def test_network_error_constants_exposed(self):
+        from codepilot.config.providers import (
+            NETWORK_ERROR_BASE_DELAY,
+            NETWORK_ERROR_MAX_RETRIES,
+        )
+        assert NETWORK_ERROR_MAX_RETRIES >= 2
+        assert NETWORK_ERROR_BASE_DELAY >= 1.0
+
+    def test_is_network_error_detects_api_connection_error(self):
+        from codepilot.config.providers import _is_network_error
+
+        # Synthetic clone of openai.APIConnectionError — type name match.
+        class APIConnectionError(Exception):
+            pass
+
+        class APITimeoutError(Exception):
+            pass
+
+        assert _is_network_error(APIConnectionError("Connection error.")) is True
+        assert _is_network_error(APITimeoutError("timed out")) is True
+        assert _is_network_error(ConnectionError("connection reset")) is True
+        assert _is_network_error(Exception("Connection error.")) is True
+        assert _is_network_error(Exception("read timed out")) is True
+
+    def test_is_network_error_rejects_unrelated_errors(self):
+        from codepilot.config.providers import _is_network_error
+
+        class ValueError2(Exception):
+            pass
+
+        assert _is_network_error(ValueError2("bad input")) is False
+        assert _is_network_error(Exception("Rate limit exceeded")) is False
+
+    def test_retry_call_retries_network_errors_then_succeeds(self, monkeypatch):
+        from codepilot.config import providers
+        from codepilot.config.providers import RetryableLLM
+        from unittest.mock import MagicMock
+
+        sleep_calls: list[float] = []
+        monkeypatch.setattr(providers.time, "sleep", lambda d: sleep_calls.append(d))
+
+        class APIConnectionError(Exception):
+            pass
+
+        attempts = {"n": 0}
+
+        def flaky():
+            attempts["n"] += 1
+            if attempts["n"] < 3:
+                raise APIConnectionError("Connection error.")
+            return "ok"
+
+        mock_llm = MagicMock()
+        retryable = RetryableLLM(llm=mock_llm, model_name="m")
+        result = retryable._retry_call(flaky)
+
+        assert result == "ok"
+        assert attempts["n"] == 3
+        assert len(sleep_calls) == 2  # two retry waits before the success
+        # Backoff is monotonic non-decreasing.
+        assert sleep_calls[0] <= sleep_calls[1]
+
+    def test_retry_call_gives_up_after_max_network_retries(self, monkeypatch):
+        from codepilot.config import providers
+        from codepilot.config.providers import (
+            NETWORK_ERROR_MAX_RETRIES,
+            RetryableLLM,
+        )
+        from unittest.mock import MagicMock
+
+        monkeypatch.setattr(providers.time, "sleep", lambda d: None)
+
+        class APIConnectionError(Exception):
+            pass
+
+        attempts = {"n": 0}
+
+        def always_fail():
+            attempts["n"] += 1
+            raise APIConnectionError("Connection error.")
+
+        mock_llm = MagicMock()
+        retryable = RetryableLLM(llm=mock_llm, model_name="m")
+
+        with pytest.raises(APIConnectionError):
+            retryable._retry_call(always_fail)
+
+        # Initial attempt + retries up to the cap.
+        assert attempts["n"] == NETWORK_ERROR_MAX_RETRIES + 1

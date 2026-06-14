@@ -243,3 +243,89 @@ def test_render_post_task_suggestions_skips_for_no_op_outcome():
     repl._render_post_task_suggestions("no_op")
 
     assert repl.messages[-1].content == "完成。"
+
+
+def test_report_task_to_langsmith_uses_collect_runs_root_id(monkeypatch):
+    """The root run id captured via collect_runs must be passed to LangSmith
+    directly — no list_runs poll, which is racy because LangSmith ingests
+    asynchronously."""
+    import time as time_module
+    import codepilot.ui.repl as repl_module
+
+    captured: dict = {}
+
+    class FakeClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def list_runs(self, *args, **kwargs):
+            captured["list_runs_called"] = True
+            return []
+
+        def create_feedback(self, run_id, key, score, comment):
+            captured["feedback"] = {"run_id": run_id, "key": key, "score": score}
+
+        def update_run(self, run_id, extra=None):
+            captured["update"] = {"run_id": run_id, "extra": extra}
+
+    monkeypatch.setattr("langsmith.Client", FakeClient)
+
+    repl = REPL.__new__(REPL)
+    repl._trace_enabled = True
+    repl._task_start = time_module.time() - 5
+    repl._task_iteration_count = 3
+    repl._task_tools = 5
+    repl._task_tokens = 1000
+    repl._task_input_tokens = 800
+    repl._task_output_tokens = 200
+    repl._task_tool_names = ["read_file", "edit_file"]
+    repl._task_denied_count = 0
+    repl._task_first_tool_at = time_module.time() - 4
+    repl._task_first_visible_at = time_module.time() - 4.5
+    repl._task_did_edit = True
+    repl._task_did_test = False
+    repl._task_tests_passed = None
+    repl._task_permission_wait_count = 0
+    repl._task_had_error = False
+    repl._task_user_input = "edit foo.py"
+    repl._task_run_collector_cm = None
+    repl._task_run_collector = None
+    repl._task_root_run_id = "abc-123-root"
+
+    repl._report_task_to_langsmith()
+
+    assert "list_runs_called" not in captured, "should skip list_runs when root id known"
+    assert captured["feedback"]["run_id"] == "abc-123-root"
+    assert captured["update"]["run_id"] == "abc-123-root"
+    metrics = captured["update"]["extra"]["task_metrics"]
+    assert metrics["iteration_count"] == 3
+    assert metrics["tool_call_count"] == 5
+    assert metrics["did_edit"] is True
+
+
+def test_report_task_to_langsmith_closes_collect_runs_context(monkeypatch):
+    """The collect_runs context must be closed even when tracing is disabled
+    mid-task — otherwise the contextvar leaks."""
+    import codepilot.ui.repl as repl_module
+
+    exit_called = {"n": 0}
+
+    class FakeCM:
+        def __exit__(self, *args, **kwargs):
+            exit_called["n"] += 1
+
+    class FakeHandler:
+        traced_runs = []
+
+    repl = REPL.__new__(REPL)
+    repl._trace_enabled = False
+    repl._task_start = 0
+    repl._task_run_collector_cm = FakeCM()
+    repl._task_run_collector = FakeHandler()
+    repl._task_root_run_id = None
+
+    repl._report_task_to_langsmith()
+
+    assert exit_called["n"] == 1
+    assert repl._task_run_collector_cm is None
+    assert repl._task_run_collector is None

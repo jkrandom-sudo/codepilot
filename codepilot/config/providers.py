@@ -30,6 +30,8 @@ RATE_LIMIT_BASE_DELAY = 2.0
 RATE_LIMIT_MAX_DELAY = 30.0
 SERVER_ERROR_MAX_RETRIES = 2
 SERVER_ERROR_BASE_DELAY = 5.0
+NETWORK_ERROR_MAX_RETRIES = 3
+NETWORK_ERROR_BASE_DELAY = 1.5
 
 
 def _is_rate_limit_error(error: Exception) -> bool:
@@ -60,6 +62,40 @@ def _is_quota_exceeded_error(error: Exception) -> bool:
 def _is_server_error(error: Exception) -> bool:
     status_code = _extract_status_code(error)
     return status_code in (500, 502, 503)
+
+
+def _is_network_error(error: Exception) -> bool:
+    """Return true for transient network/connection errors worth retrying.
+
+    LangSmith trace analysis (last 7 days) shows APIConnectionError is the
+    most common error class, accounting for ~4% of root runs. These are
+    transient and should not bubble up to the user without a retry.
+    """
+    type_name = type(error).__name__
+    if type_name in {
+        "APIConnectionError",
+        "APITimeoutError",
+        "ConnectError",
+        "ReadTimeout",
+        "ConnectTimeout",
+        "ReadError",
+        "RemoteProtocolError",
+        "ConnectionError",
+    }:
+        return True
+    text = str(error).lower()
+    return any(
+        marker in text
+        for marker in (
+            "connection error",
+            "connection reset",
+            "connection aborted",
+            "connection refused",
+            "temporary failure in name resolution",
+            "remote end closed",
+            "read timed out",
+        )
+    )
 
 
 class ProviderRegistry:
@@ -218,6 +254,21 @@ class RetryableLLM(BaseChatModel):
                     logger.warning(
                         f"Server error for {self.model_name} "
                         f"(attempt {attempt + 1}/{SERVER_ERROR_MAX_RETRIES}). Retrying in {delay:.1f}s..."
+                    )
+                    time.sleep(delay)
+                    attempt += 1
+                    last_error = e
+                elif _is_network_error(e):
+                    if attempt >= NETWORK_ERROR_MAX_RETRIES:
+                        raise
+                    delay = min(
+                        NETWORK_ERROR_BASE_DELAY * (2 ** attempt),
+                        RATE_LIMIT_MAX_DELAY,
+                    )
+                    logger.warning(
+                        f"Network error for {self.model_name} "
+                        f"({type(e).__name__}, attempt {attempt + 1}/{NETWORK_ERROR_MAX_RETRIES}). "
+                        f"Retrying in {delay:.1f}s..."
                     )
                     time.sleep(delay)
                     attempt += 1

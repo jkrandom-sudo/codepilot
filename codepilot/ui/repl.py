@@ -481,6 +481,23 @@ class REPL:
             except Exception:
                 pass
 
+        # Capture the root run synchronously via collect_runs so we can attach
+        # task_metrics without polling LangSmith (which is async/batched and
+        # frequently misses the run when queried right after the stream ends).
+        run_collector_cm = None
+        run_collector_handler = None
+        if self._trace_enabled:
+            try:
+                from langchain_core.tracers.context import collect_runs as _collect_runs
+                run_collector_cm = _collect_runs()
+                run_collector_handler = run_collector_cm.__enter__()
+            except Exception:
+                run_collector_cm = None
+                run_collector_handler = None
+        self._task_run_collector_cm = run_collector_cm
+        self._task_run_collector = run_collector_handler
+        self._task_root_run_id = None
+
         step = 0
         current_phase = ""
         activity = self.renderer.start_activity("正在请求模型，等待第一步计划...")
@@ -913,10 +930,26 @@ class REPL:
         return "success"
 
     def _report_task_to_langsmith(self) -> None:
+        # Always close the collect_runs context if it was opened, even when
+        # tracing is disabled mid-task or the run aborted before _run_agent
+        # returned. Capture the root run id from traced_runs to skip the
+        # racy list_runs() poll.
+        if getattr(self, "_task_run_collector_cm", None) is not None:
+            try:
+                self._task_run_collector_cm.__exit__(None, None, None)
+                handler = getattr(self, "_task_run_collector", None)
+                traced = getattr(handler, "traced_runs", None) if handler else None
+                if traced:
+                    self._task_root_run_id = str(traced[0].id)
+            except Exception:
+                pass
+            finally:
+                self._task_run_collector_cm = None
+                self._task_run_collector = None
+
         if not self._trace_enabled or self._task_start == 0:
             return
         try:
-            import os
             from collections import Counter
             from datetime import datetime, timezone, timedelta
 
@@ -936,25 +969,32 @@ class REPL:
                 if self._task_first_visible_at else None
             )
 
-            task_start_utc = datetime.fromtimestamp(self._task_start, tz=timezone.utc)
-            runs = list(client.list_runs(
-                project_name=os.environ.get("LANGSMITH_PROJECT", "codepilot"),
-                is_root=True,
-                start_time=task_start_utc - timedelta(seconds=2),
-                limit=10,
-            ))
-            root_run = None
-            best_delta = float("inf")
-            for r in runs:
-                if r.start_time:
-                    delta = abs((r.start_time - task_start_utc).total_seconds())
-                    if delta < best_delta:
-                        best_delta = delta
-                        root_run = r
+            root_run_id = getattr(self, "_task_root_run_id", None)
+            if not root_run_id:
+                # Fallback to the legacy time-window poll. LangSmith ingestion
+                # is async, so this often misses very-recent runs; the
+                # collect_runs path above is the primary route.
+                task_start_utc = datetime.fromtimestamp(self._task_start, tz=timezone.utc)
+                runs = list(client.list_runs(
+                    project_name=os.environ.get("LANGSMITH_PROJECT", "codepilot"),
+                    is_root=True,
+                    start_time=task_start_utc - timedelta(seconds=2),
+                    limit=10,
+                ))
+                root_run = None
+                best_delta = float("inf")
+                for r in runs:
+                    if r.start_time:
+                        delta = abs((r.start_time - task_start_utc).total_seconds())
+                        if delta < best_delta:
+                            best_delta = delta
+                            root_run = r
+                if root_run:
+                    root_run_id = str(root_run.id)
 
-            if root_run:
+            if root_run_id:
                 client.create_feedback(
-                    run_id=root_run.id,
+                    run_id=root_run_id,
                     key="task_outcome",
                     score=1.0 if outcome == "success" else (0.5 if outcome in ("partial", "aborted") else 0.0),
                     comment=f"outcome={outcome}, iterations={self._task_iteration_count}, "
@@ -964,7 +1004,7 @@ class REPL:
                             f"elapsed={elapsed:.1f}s",
                 )
                 client.update_run(
-                    run_id=root_run.id,
+                    run_id=root_run_id,
                     extra={
                         "task_metrics": {
                             "iteration_count": self._task_iteration_count,
