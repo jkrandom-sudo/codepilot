@@ -1,3 +1,8 @@
+"""@-reference parsing in user input.
+
+Parses @filename and @path references from user prompts
+and loads the referenced content into context.
+"""
 from __future__ import annotations
 
 import re

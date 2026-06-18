@@ -1,3 +1,8 @@
+"""Project detection and metadata extraction.
+
+Detects project type (Python, Node.js, etc.) and returns
+relevant context for the agent.
+"""
 from __future__ import annotations
 
 import os

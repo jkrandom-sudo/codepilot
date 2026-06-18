@@ -1,3 +1,8 @@
+"""LangGraph agent graph builder for CodePilot.
+
+Constructs the agent execution graph (agent -> tools -> agent loop)
+with support for ReAct and Plan-and-Execute workflows.
+"""
 from __future__ import annotations
 
 import os

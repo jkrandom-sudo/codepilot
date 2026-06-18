@@ -1,3 +1,8 @@
+"""Rich terminal output renderer.
+
+Renders agent task start, tool calls, results,
+phase headers, and task summaries with Rich formatting.
+"""
 from __future__ import annotations
 
 import json

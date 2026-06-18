@@ -1,3 +1,8 @@
+"""MCP (Model Context Protocol) tool integration.
+
+Connects to external MCP servers and exposes
+their tools as LangChain tools.
+"""
 from __future__ import annotations
 
 import asyncio

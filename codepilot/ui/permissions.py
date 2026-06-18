@@ -1,3 +1,8 @@
+"""Interactive permission prompt UI.
+
+Displays tool execution requests to the user
+and captures allow/deny/always-allow decisions.
+"""
 from __future__ import annotations
 
 import sys

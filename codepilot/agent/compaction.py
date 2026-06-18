@@ -1,3 +1,9 @@
+"""Message compaction and pruning for LangGraph context budget.
+
+Three-tier strategy: prune_tool_outputs (reduce large tool results),
+compact_messages (LLM-based summarization of old turns),
+and overflow_compaction (fallback when still over budget).
+"""
 from __future__ import annotations
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage

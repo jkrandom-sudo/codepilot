@@ -1,3 +1,8 @@
+"""Session resume logic for restoring agent state.
+
+Converts stored messages back to LangChain BaseMessage objects
+and rebuilds the agent state for continuation.
+"""
 from __future__ import annotations
 
 from datetime import datetime, timedelta

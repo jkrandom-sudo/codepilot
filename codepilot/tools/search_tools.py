@@ -1,3 +1,8 @@
+"""Code search tools (grep, glob).
+
+File content search (grep) and file name search (glob)
+for the agent to navigate codebases.
+"""
 from __future__ import annotations
 
 import os

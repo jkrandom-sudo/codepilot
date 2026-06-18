@@ -1,3 +1,8 @@
+"""Git operation tools (status, diff, log).
+
+Thin wrappers around git CLI for agent-accessible
+version control operations.
+"""
 from __future__ import annotations
 
 import os

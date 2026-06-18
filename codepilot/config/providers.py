@@ -1,3 +1,8 @@
+"""LLM provider configuration and model registry.
+
+Manages API keys, model names, and provider connections
+for OpenAI, Anthropic, DeepSeek, GLM, and custom endpoints.
+"""
 from __future__ import annotations
 
 import logging

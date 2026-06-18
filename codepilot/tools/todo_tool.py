@@ -1,3 +1,8 @@
+"""Task list (todo) management tool.
+
+Provides todo_write for managing the agent's
+task list within a session.
+"""
 from __future__ import annotations
 
 import json

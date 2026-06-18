@@ -1,3 +1,8 @@
+"""Interactive REPL for the CodePilot agent.
+
+Main loop: reads user input, dispatches to the agent graph,
+and renders streaming output in real time.
+"""
 from __future__ import annotations
 
 import os

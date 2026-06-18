@@ -1,3 +1,8 @@
+"""Web search tool.
+
+Searches the web via DuckDuckGo and returns
+results for the agent.
+"""
 from __future__ import annotations
 
 from langchain_core.tools import tool

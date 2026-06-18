@@ -1,3 +1,8 @@
+"""Project-level AGENTS.md / CLAUDE.md instruction loading.
+
+Discovers and loads project-level instruction files
+and injects them into the agent system prompt.
+"""
 from __future__ import annotations
 
 from pathlib import Path
