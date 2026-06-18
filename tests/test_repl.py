@@ -1,8 +1,8 @@
 from langchain_core.messages import AIMessage, ToolMessage
 
+from codepilot.ui.intent import expand_numbered_choice_reply
 from codepilot.ui.repl import (
     REPL,
-    expand_numbered_choice_reply,
     is_tool_result_error,
     resolve_tool_message,
     token_display_for_tool_call,
@@ -250,7 +250,6 @@ def test_report_task_to_langsmith_uses_collect_runs_root_id(monkeypatch):
     directly — no list_runs poll, which is racy because LangSmith ingests
     asynchronously."""
     import time as time_module
-    import codepilot.ui.repl as repl_module
 
     captured: dict = {}
 
@@ -306,7 +305,6 @@ def test_report_task_to_langsmith_uses_collect_runs_root_id(monkeypatch):
 def test_report_task_to_langsmith_closes_collect_runs_context(monkeypatch):
     """The collect_runs context must be closed even when tracing is disabled
     mid-task — otherwise the contextvar leaks."""
-    import codepilot.ui.repl as repl_module
 
     exit_called = {"n": 0}
 

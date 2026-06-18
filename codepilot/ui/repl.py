@@ -21,7 +21,6 @@ from codepilot.ui.intent import (
     classify_intent_with_context,
     classify_task,
     expand_choice_reply,
-    expand_numbered_choice_reply,
     greeting_response,
 )
 from codepilot.ui.permissions import PermissionHandler, prompt_permission_choice

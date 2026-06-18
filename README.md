@@ -10,6 +10,9 @@ python3.11 -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
 
+# 安装后自检
+codepilot --doctor
+
 # 交互模式
 codepilot
 
@@ -91,6 +94,7 @@ pipx inject codepilot "mcp>=1.0.0"
 | `--prompt` | `-p` | 非交互模式，执行后退出 |
 | `--resume` | `-r` | 恢复指定 ID 的会话 |
 | `--resume-last` | | 恢复最近一次会话 |
+| `--doctor` | | 运行环境和配置自检后退出 |
 | `--version` | | 显示版本 |
 | `--help` | | 显示帮助 |
 
@@ -240,9 +244,23 @@ REPL 中可使用 `/init` 初始化 `AGENTS.md`：
 
 LangSmith 追踪在 `langsmith.enabled: true` 且 API Key 存在时自动开启。追踪数据包含 Agent、模型、任务类型、工具调用链、输入 token、输出 token、总 token、延迟和非交互任务指标。
 
+## 产品化路线图
+
+CodePilot 的自研产品化路线分为 Foundation、Safety、Capability、Distribution & Evaluation 四个阶段。详见：
+
+- [产品化技术路线图](docs/productization-roadmap.md)
+- [发布检查清单](docs/release-checklist.md)
+
+安装或升级后建议先运行：
+
+```bash
+codepilot --doctor
+```
+
 ## 开发
 
 ```bash
+codepilot --doctor
 pytest tests/ -v
 ruff check codepilot evals tests
 python -m evals.run_local --model deepseek/deepseek-v4-flash

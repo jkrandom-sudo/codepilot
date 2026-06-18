@@ -198,7 +198,7 @@ class TestIterationBudgets:
     def test_truncate_response_caps_lifted_for_complex_tasks(self):
         """Truncation caps doubled for high-tool-count tasks so structured
         evaluation summaries can actually fit."""
-        from codepilot.agent.nodes import truncate_response, MAX_RESPONSE_CHARS
+        from codepilot.agent.nodes import truncate_response
         from codepilot.agent.registry import AgentRegistry
         from langchain_core.messages import AIMessage
 

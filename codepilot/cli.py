@@ -7,6 +7,7 @@ import click
 from langchain_core.messages import AIMessage, ToolMessage
 
 from codepilot import __version__
+from codepilot.doctor import render_report, run_doctor
 from codepilot.utils.token_usage import TokenUsageAccumulator
 
 
@@ -31,8 +32,14 @@ NON_INTERACTIVE_HEARTBEAT_INTERVAL = 15.0
 @click.option("--resume", "-r", default=None, help="Resume a session by ID")
 @click.option("--resume-last", is_flag=True, default=False, help="Resume the most recent session")
 @click.option("--coauthor/--no-coauthor", default=None, help="Add Co-authored-by to git commits (default: from config)")
-def main(model: str | None, agent: str | None, confirm: bool, prompt: str | None, resume: str | None, resume_last: bool, coauthor: bool | None) -> None:
+@click.option("--doctor", is_flag=True, default=False, help="Run environment and configuration diagnostics, then exit")
+def main(model: str | None, agent: str | None, confirm: bool, prompt: str | None, resume: str | None, resume_last: bool, coauthor: bool | None, doctor: bool) -> None:
     """CodePilot - AI coding agent for the terminal."""
+    if doctor:
+        report = run_doctor()
+        click.echo(render_report(report))
+        raise click.exceptions.Exit(report.exit_code())
+
     os.environ.setdefault("CODEPILOT_WORKING_DIR", os.getcwd())
 
     from codepilot.config.settings import load_config
